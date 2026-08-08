@@ -1,0 +1,18 @@
+// Package manifest, so another Zig project can depend on this binding by URL
+// or path. There are no `.dependencies` and there never will be: the binding
+// needs libc and the engine .so, neither of which is a Zig package.
+//
+// A consumer still has to link the engine itself — a Zig module carries
+// source, not link flags. See the README's "Using it from another project".
+.{
+    .name = "htmlsanitizer",
+    .version = "0.1.0",
+    .minimum_zig_version = "0.13.0",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "example",
+        "README.md",
+    },
+}

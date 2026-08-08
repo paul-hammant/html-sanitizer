@@ -1,0 +1,40 @@
+# aeb build outputs
+/target/
+
+# the shared native engine is a build artifact (core/.build.ae rebuilds it)
+/core/native/*.so
+/core/native/*.dylib
+/core/native/*.dll
+
+# per-binding staged copies of the engine .so
+**/native/*.so
+**/native/*.dylib
+**/native/*.dll
+
+# per-language build artifacts
+**/bin/
+**/obj/
+**/build/
+**/.dart_tool/
+**/dist-newstyle/
+**/.stack-work/
+**/vendor/
+**/__pycache__/
+**/.pytest_cache/
+**/*.egg-info/
+**/dist/
+**/node_modules/
+**/_build/
+**/deps/
+**/zig-cache/
+**/.zig-cache/
+**/zig-out/
+**/.nimcache/
+**/nimcache/
+# Nim compiles tests/tconformance.nim to a sibling binary of the same name
+/nim/tests/tconformance
+**/erl_crash.dump
+**/.cpcache/
+**/target/
+*.class
+*.o

@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Maven build for downstream consumers.
+
+  The in-tree conformance run (java/.tests.ae) does NOT use Maven: it compiles
+  with javac and runs ConformanceTest's main method, so the suite needs
+  nothing but a JDK and works offline. This POM exists so that a project
+  depending on the binding can build it the usual way, and so `mvn test` works
+  for anyone who does have the JUnit artifacts resolved.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>org.htmlsanitizer</groupId>
+  <artifactId>htmlsanitizer</artifactId>
+  <version>1.0.0</version>
+  <packaging>jar</packaging>
+
+  <name>htmlsanitizer</name>
+  <description>
+    Cleans HTML of constructs that can lead to XSS — a Java FFM (Panama)
+    binding over the shared Aether HtmlSanitizer engine. Marshalling only; the
+    sanitizer itself is core/htmlsanitizer.ae.
+  </description>
+
+  <properties>
+    <maven.compiler.release>22</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <junit.version>5.12.0</junit.version>
+  </properties>
+
+  <dependencies>
+    <!-- Test-only. The in-tree suite is a main method and needs none of this;
+         see ConformanceTest's class javadoc. -->
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>${junit.version}</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <sourceDirectory>src/main/java</sourceDirectory>
+    <testSourceDirectory>src/test/java</testSourceDirectory>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.13.0</version>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.2.5</version>
+        <configuration>
+          <!-- FFM requires this; it does NOT require --enable-preview,
+               because FFM is final as of JDK 22. -->
+          <argLine>--enable-native-access=ALL-UNNAMED</argLine>
+          <environmentVariables>
+            <HTMLSANITIZER_LIB>${htmlsanitizer.lib}</HTMLSANITIZER_LIB>
+          </environmentVariables>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>3.4.1</version>
+        <configuration>
+          <archive>
+            <manifestEntries>
+              <Enable-Native-Access>ALL-UNNAMED</Enable-Native-Access>
+            </manifestEntries>
+          </archive>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+
+  <profiles>
+    <!-- Default the engine path to the in-tree build when not overridden. -->
+    <profile>
+      <id>default-lib</id>
+      <activation>
+        <property><name>!htmlsanitizer.lib</name></property>
+      </activation>
+      <properties>
+        <htmlsanitizer.lib>${project.basedir}/../core/native/libhtmlsanitizer.so</htmlsanitizer.lib>
+      </properties>
+    </profile>
+  </profiles>
+</project>

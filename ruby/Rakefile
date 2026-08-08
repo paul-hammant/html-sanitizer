@@ -1,0 +1,35 @@
+# frozen_string_literal: true
+
+# The engine lives in ../core/native; point the loader at it for in-tree runs
+# unless the caller (aeb, CI) already set HTMLSANITIZER_LIB.
+ENV["HTMLSANITIZER_LIB"] ||= begin
+  candidate = File.expand_path("../core/native/libhtmlsanitizer.so", __dir__)
+  File.exist?(candidate) ? candidate : nil
+end
+
+begin
+  require "rspec/core/rake_task"
+  RSpec::Core::RakeTask.new(:spec)
+rescue LoadError
+  desc "spec (rspec is not installed)"
+  task :spec do
+    abort "rspec is not installed — `gem install rspec` (or `bundle install`) first."
+  end
+end
+
+desc "Build the shared native engine into ../core/native"
+task :engine do
+  root = File.expand_path("..", __dir__)
+  sh "cd #{root}/core && ae build --emit=lib embed.ae --extra _embed_support.c " \
+     "-o native/libhtmlsanitizer.so"
+end
+
+desc "Stage the engine into ruby/native/ so the built gem bundles it"
+task stage_native: :engine do
+  root = File.expand_path("..", __dir__)
+  require "fileutils"
+  FileUtils.mkdir_p("#{__dir__}/native")
+  FileUtils.cp("#{root}/core/native/libhtmlsanitizer.so", "#{__dir__}/native/")
+end
+
+task default: :spec

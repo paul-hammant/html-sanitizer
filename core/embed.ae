@@ -1,0 +1,430 @@
+// core/embed.ae — the C ABI over the pure-Aether HtmlSanitizer engine.
+//
+// Build it as a shared library and dlsym/link the exports:
+//
+//     ae build --emit=lib core/embed.ae --extra core/_embed_support.c \
+//         -o core/native/libhtmlsanitizer.so
+//
+// No new sanitizer semantics live here — parsing, filtering, URL resolution
+// and CSS handling all stay exactly as core/htmlsanitizer.ae implements them.
+// This layer adds only the embedding seam the module surface lacks:
+//
+//   * caller-owned C strings — every string result is duplicated via
+//     hs_raw_dup; the host frees it with hs_embed_free_string;
+//   * an opaque handle (the *HtmlSanitizer pointer) so N independent
+//     sanitizer configurations coexist in one process;
+//   * flat, scalar-only signatures: no Aether tuples, structs-by-value or
+//     closures cross the boundary, so a ctypes/Fiddle/koffi/Panama binding
+//     can describe every symbol with primitive types alone;
+//   * host callbacks, via the trampoline boxes in _embed_support.c.
+//
+// Export naming: every function is prefixed `hs_embed_`, so under
+// `--emit=lib` it lands as `aether_hs_embed_<name>`. That mangled name is
+// what the bindings dlsym. The ABI is append-only — never renumber a
+// constant, never change a signature; add a new symbol instead.
+//
+// Lifecycle: new -> configure -> sanitize (repeatedly) -> free.
+//
+//     void*  h   = aether_hs_embed_new();
+//     aether_hs_embed_allow_tag(h, "my-tag");
+//     char*  out = aether_hs_embed_sanitize(h, "<div>...", "https://base/");
+//     aether_hs_embed_free_string(out);
+//     aether_hs_embed_free(h);
+
+import htmlsanitizer
+import htmlsanitizer (DomNode, DomAttr, HtmlSanitizer)
+import std.set
+import std.list
+import std.string
+
+// Caller-owned-string helpers + callback trampolines (core/_embed_support.c).
+extern hs_raw_dup(s: string) -> string
+extern hs_raw_free(s: string)
+extern hs_embed_cb_box(kind: int, host_fn: ptr, user_data: ptr) -> ptr
+extern hs_embed_cb_free_env(box: ptr)
+// Frees the box AND its env — for replacing/clearing a hook, where nothing
+// else will ever see the outgoing pointer. See _embed_support.c.
+extern hs_embed_cb_free_box(box: ptr)
+// Read a std.set items() snapshot (a MapKeys) — std.set has no per-entry
+// accessor of its own. Returns a borrowed pointer; dup before returning.
+extern hs_embed_keys_count(snap: ptr) -> int
+extern hs_embed_keys_at(snap: ptr, index: int) -> string
+
+// ---- lifecycle ----
+
+// Create a sanitizer with the secure defaults populated (allowed tags,
+// attributes, CSS properties, schemes, URI attributes). Returns the opaque
+// handle, or null on allocation failure.
+hs_embed_new() -> ptr {
+    return htmlsanitizer.new() as ptr
+}
+
+// Release the sanitizer and everything it owns. Frees each callback box's
+// smuggled env first (the engine's free() releases the boxes themselves).
+// NULL-safe, idempotent from the host's perspective as long as the host
+// drops its handle afterwards.
+hs_embed_free(h: ptr) {
+    if h == null { return }
+    s = h as *HtmlSanitizer
+    hs_embed_cb_free_env(s.on_removing_tag)
+    hs_embed_cb_free_env(s.on_removing_attribute)
+    hs_embed_cb_free_env(s.on_removing_style)
+    hs_embed_cb_free_env(s.on_removing_comment)
+    hs_embed_cb_free_env(s.on_removing_css_class)
+    hs_embed_cb_free_env(s.on_post_process_node)
+    hs_embed_cb_free_env(s.on_post_process_dom)
+    hs_embed_cb_free_env(s.on_filter_url)
+    htmlsanitizer.free(s)
+}
+
+// Free a string this ABI returned. Every `char*` out of this library is
+// caller-owned and must come back through here. (Distinct from
+// hs_embed_free above, which releases a sanitizer HANDLE — the C helpers
+// are deliberately named hs_raw_* so neither shadows an Aether export.)
+hs_embed_free_string(s: string) {
+    hs_raw_free(s)
+}
+
+// ---- the main entry point ----
+
+// Sanitize an HTML fragment. `base_url` may be "" (no resolution of relative
+// URLs). Returns a caller-owned string; free with hs_embed_free_string.
+hs_embed_sanitize(h: ptr, html: string, base_url: string) -> string {
+    if h == null { return hs_raw_dup("") }
+    s = h as *HtmlSanitizer
+    out = htmlsanitizer.sanitize(s, html, base_url)
+    return hs_raw_dup(out)
+}
+
+// Sanitize a full HTML document. Currently the same path as sanitize()
+// (the engine treats them alike); kept as a distinct export so bindings can
+// expose the C# library's two-method surface without drifting later.
+hs_embed_sanitize_document(h: ptr, html: string, base_url: string) -> string {
+    if h == null { return hs_raw_dup("") }
+    s = h as *HtmlSanitizer
+    out = htmlsanitizer.sanitize_document(s, html, base_url)
+    return hs_raw_dup(out)
+}
+
+// ---- boolean flags ----
+
+// Keep the children of a removed element instead of dropping the subtree.
+hs_embed_set_keep_child_nodes(h: ptr, on: int) {
+    if h == null { return }
+    s = h as *HtmlSanitizer
+    s.keep_child_nodes = on != 0
+}
+
+hs_embed_get_keep_child_nodes(h: ptr) -> int {
+    if h == null { return 0 }
+    s = h as *HtmlSanitizer
+    if s.keep_child_nodes { return 1 }
+    return 0
+}
+
+// Allow `data-*` attributes through without listing each one.
+hs_embed_set_allow_data_attributes(h: ptr, on: int) {
+    if h == null { return }
+    s = h as *HtmlSanitizer
+    s.allow_data_attributes = on != 0
+}
+
+hs_embed_get_allow_data_attributes(h: ptr) -> int {
+    if h == null { return 0 }
+    s = h as *HtmlSanitizer
+    if s.allow_data_attributes { return 1 }
+    return 0
+}
+
+// ---- allow-list mutation ----
+//
+// Six parallel sets. Rather than six near-identical export families, the ABI
+// takes a `which` selector so a binding writes one wrapper and exposes six
+// idiomatic methods over it. These constants are ABI — append only:
+//
+//   0 = allowed_tags            1 = allowed_attributes
+//   2 = allowed_css_properties  3 = allowed_schemes
+//   4 = allowed_classes         5 = uri_attributes
+
+fn hs_pick_set(s: *HtmlSanitizer, which: int) -> ptr {
+    if which == 0 { return s.allowed_tags }
+    if which == 1 { return s.allowed_attributes }
+    if which == 2 { return s.allowed_css_properties }
+    if which == 3 { return s.allowed_schemes }
+    if which == 4 { return s.allowed_classes }
+    if which == 5 { return s.uri_attributes }
+    return null
+}
+
+// Add `item` to the selected set. Returns 1 on success, 0 on a bad handle or
+// an unknown `which`.
+hs_embed_allow(h: ptr, which: int, item: string) -> int {
+    if h == null { return 0 }
+    s = h as *HtmlSanitizer
+    st = hs_pick_set(s, which)
+    if st == null { return 0 }
+    set.add(st, item)
+    return 1
+}
+
+// Remove `item` from the selected set (the "deny" direction — e.g. drop
+// "a" from allowed_tags). Returns 1 on success.
+hs_embed_disallow(h: ptr, which: int, item: string) -> int {
+    if h == null { return 0 }
+    s = h as *HtmlSanitizer
+    st = hs_pick_set(s, which)
+    if st == null { return 0 }
+    set.remove(st, item)
+    return 1
+}
+
+// Is `item` currently in the selected set?
+hs_embed_is_allowed(h: ptr, which: int, item: string) -> int {
+    if h == null { return 0 }
+    s = h as *HtmlSanitizer
+    st = hs_pick_set(s, which)
+    if st == null { return 0 }
+    if set.contains(st, item) { return 1 }
+    return 0
+}
+
+// Empty the selected set — the "start from nothing" move for a caller that
+// wants a strict allow-list rather than the permissive defaults.
+hs_embed_clear(h: ptr, which: int) -> int {
+    if h == null { return 0 }
+    s = h as *HtmlSanitizer
+    st = hs_pick_set(s, which)
+    if st == null { return 0 }
+    set.clear(st)
+    return 1
+}
+
+// Number of entries in the selected set. With hs_embed_item_at below, this
+// lets a host enumerate the effective policy (useful for diffing against the
+// C# library's defaults, and for a binding's `allowed_tags` property).
+hs_embed_count(h: ptr, which: int) -> int {
+    if h == null { return 0 }
+    s = h as *HtmlSanitizer
+    st = hs_pick_set(s, which)
+    if st == null { return 0 }
+    return set.size(st)
+}
+
+// The item at `index` in the selected set, as a caller-owned string ("" when
+// out of range). Set iteration order is unspecified but stable between
+// mutations, so a host enumerating 0..count-1 sees each item exactly once.
+//
+// This snapshots the whole set per call — O(n) each, so it is O(n^2) to walk
+// a large set. That is deliberate: it keeps the ABI free of iterator handles
+// (which every binding would then have to lifetime-manage), and the sets
+// here are policy lists of at most a few hundred entries, enumerated at
+// configuration time rather than in the sanitize hot path.
+hs_embed_item_at(h: ptr, which: int, index: int) -> string {
+    if h == null { return hs_raw_dup("") }
+    s = h as *HtmlSanitizer
+    st = hs_pick_set(s, which)
+    if st == null { return hs_raw_dup("") }
+    snap, err = set.items(st)
+    if err != "" { return hs_raw_dup("") }
+    if snap == null { return hs_raw_dup("") }
+    if index < 0 {
+        set.items_free(snap)
+        return hs_raw_dup("")
+    }
+    if index >= hs_embed_keys_count(snap) {
+        set.items_free(snap)
+        return hs_raw_dup("")
+    }
+    v = hs_embed_keys_at(snap, index)
+    out = hs_raw_dup(v)
+    set.items_free(snap)
+    return out
+}
+
+// ---- callbacks ----
+//
+// Each hook takes a host function pointer plus an opaque `user_data` that is
+// handed back as the first argument on every invocation (bindings use it to
+// find the object/handler that owns the callback). Passing a null `fn`
+// clears the hook.
+//
+// Host-side signatures (C). NOTE the widths: `int`, NOT `long`. Codegen
+// emits the engine's closure calls as `int(*)(...)`, so a host declaring
+// `long` gets a 4-vs-8-byte mismatch on LP64 — garbage `reason` values and
+// corrupted stack arguments. _embed_support.c's trampolines are the
+// authority; core_tests/abi_smoke.c is a working example of each.
+//   removing_tag:       int  f(void* ud, void* node, int reason)
+//   removing_attribute: int  f(void* ud, void* elem, void* attr, int reason)
+//   removing_style:     int  f(void* ud, void* elem, const char* name,
+//                             const char* value, int reason)
+//   removing_comment:   int  f(void* ud, void* node)
+//   post_process_node:  void f(void* ud, void* node)
+//   post_process_dom:   void f(void* ud, void* doc)
+//   filter_url:         char* f(void* ud, void* elem,
+//                              const char* raw, const char* resolved)
+//
+// For the three `removing_*` hooks and removing_comment, a NON-ZERO return
+// CANCELS the removal (i.e. keeps the node/attribute/property). filter_url
+// returns a replacement URL — return the `resolved` argument unchanged for
+// "no rewrite", "" to drop the attribute, or a malloc'd string the engine
+// takes ownership of.
+//
+// The node/attr pointers are borrowed *DomNode / *DomAttr — valid only for
+// the duration of the callback (the DOM is freed when sanitize returns).
+// Read them with the accessors below; do not retain them.
+
+// Install a hook, releasing whatever was there. Uses _free_box (not
+// _free_env): on this path the outgoing box is dropped entirely, so freeing
+// only its env would leak the two-word box on every replace/clear.
+fn swap_hook(old: ptr, fn: ptr, user_data: ptr, kind: int) -> ptr {
+    if old != null { hs_embed_cb_free_box(old) }
+    return hs_embed_cb_box(kind, fn, user_data)
+}
+
+hs_embed_on_removing_tag(h: ptr, fn: ptr, user_data: ptr) {
+    if h == null { return }
+    s = h as *HtmlSanitizer
+    s.on_removing_tag = swap_hook(s.on_removing_tag, fn, user_data, 0)
+}
+
+hs_embed_on_removing_attribute(h: ptr, fn: ptr, user_data: ptr) {
+    if h == null { return }
+    s = h as *HtmlSanitizer
+    s.on_removing_attribute = swap_hook(s.on_removing_attribute, fn, user_data, 1)
+}
+
+hs_embed_on_removing_comment(h: ptr, fn: ptr, user_data: ptr) {
+    if h == null { return }
+    s = h as *HtmlSanitizer
+    s.on_removing_comment = swap_hook(s.on_removing_comment, fn, user_data, 2)
+}
+
+hs_embed_on_post_process_node(h: ptr, fn: ptr, user_data: ptr) {
+    if h == null { return }
+    s = h as *HtmlSanitizer
+    s.on_post_process_node = swap_hook(s.on_post_process_node, fn, user_data, 3)
+}
+
+hs_embed_on_post_process_dom(h: ptr, fn: ptr, user_data: ptr) {
+    if h == null { return }
+    s = h as *HtmlSanitizer
+    s.on_post_process_dom = swap_hook(s.on_post_process_dom, fn, user_data, 3)
+}
+
+hs_embed_on_filter_url(h: ptr, fn: ptr, user_data: ptr) {
+    if h == null { return }
+    s = h as *HtmlSanitizer
+    s.on_filter_url = swap_hook(s.on_filter_url, fn, user_data, 4)
+}
+
+hs_embed_on_removing_style(h: ptr, fn: ptr, user_data: ptr) {
+    if h == null { return }
+    s = h as *HtmlSanitizer
+    s.on_removing_style = swap_hook(s.on_removing_style, fn, user_data, 5)
+}
+
+// ---- DOM accessors (for use inside callbacks) ----
+//
+// A callback receives a borrowed *DomNode / *DomAttr. These read it without
+// exposing the struct layout, so a binding needs no struct marshalling — the
+// pointer stays opaque and every field crosses as a scalar or an owned
+// string. All are NULL-safe.
+
+// Node kind: 1=Document, 2=Element, 3=Text, 4=Comment. 0 for a null node.
+hs_embed_node_kind(n: ptr) -> int {
+    if n == null { return 0 }
+    nd = n as *DomNode
+    return nd.kind
+}
+
+// Element tag name (lowercased by the parser); "" for non-elements.
+hs_embed_node_name(n: ptr) -> string {
+    if n == null { return hs_raw_dup("") }
+    nd = n as *DomNode
+    return hs_raw_dup(nd.name)
+}
+
+// Text/comment content; "" for elements and documents.
+hs_embed_node_value(n: ptr) -> string {
+    if n == null { return hs_raw_dup("") }
+    nd = n as *DomNode
+    return hs_raw_dup(nd.value)
+}
+
+// Number of child nodes.
+hs_embed_node_child_count(n: ptr) -> int {
+    if n == null { return 0 }
+    nd = n as *DomNode
+    if nd.children == null { return 0 }
+    return list.size(nd.children)
+}
+
+// Child at `index` as a borrowed node pointer; null when out of range.
+hs_embed_node_child_at(n: ptr, index: int) -> ptr {
+    if n == null { return null }
+    nd = n as *DomNode
+    if nd.children == null { return null }
+    if index < 0 { return null }
+    if index >= list.size(nd.children) { return null }
+    return list.get_raw(nd.children, index)
+}
+
+// Parent node, or null at the root.
+hs_embed_node_parent(n: ptr) -> ptr {
+    if n == null { return null }
+    nd = n as *DomNode
+    return nd.parent
+}
+
+// Number of attributes on an element.
+hs_embed_node_attr_count(n: ptr) -> int {
+    if n == null { return 0 }
+    nd = n as *DomNode
+    if nd.attrs == null { return 0 }
+    return list.size(nd.attrs)
+}
+
+// Attribute at `index` as a borrowed *DomAttr; null when out of range.
+hs_embed_node_attr_at(n: ptr, index: int) -> ptr {
+    if n == null { return null }
+    nd = n as *DomNode
+    if nd.attrs == null { return null }
+    if index < 0 { return null }
+    if index >= list.size(nd.attrs) { return null }
+    return list.get_raw(nd.attrs, index)
+}
+
+// Attribute name / value, as caller-owned strings.
+hs_embed_attr_name(a: ptr) -> string {
+    if a == null { return hs_raw_dup("") }
+    at = a as *DomAttr
+    return hs_raw_dup(at.name)
+}
+
+hs_embed_attr_value(a: ptr) -> string {
+    if a == null { return hs_raw_dup("") }
+    at = a as *DomAttr
+    return hs_raw_dup(at.value)
+}
+
+// Rewrite an attribute's value from inside a callback (e.g. to canonicalise
+// a URL rather than remove the attribute).
+hs_embed_attr_set_value(a: ptr, value: string) {
+    if a == null { return }
+    at = a as *DomAttr
+    // COPY, don't alias. `value` is the host's buffer and may be freed the
+    // moment the callback returns (a Java confined Arena, a transient Python
+    // bytes, a Go C.CString the caller frees). Storing it raw would leave the
+    // DOM pointing at freed memory. string.concat with "" gives us an
+    // engine-owned string, which is what every internal write of .value does.
+    at.value = string.concat("", value)
+}
+
+// ---- version / introspection ----
+
+// ABI revision of this library. Bump when a symbol is ADDED (never when one
+// changes meaning — that is not allowed). A binding can check this to fail
+// fast against an engine older than the features it expects.
+hs_embed_abi_version() -> int {
+    return 1
+}

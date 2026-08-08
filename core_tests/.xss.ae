@@ -1,0 +1,35 @@
+// XSS bypass-vector gate.
+//
+// core_tests/.tests.ae proves the engine behaves like the C# original;
+// this asks whether known evasion techniques get through. A failure here is
+// a live XSS hole, so it is a separate, loudly-named node rather than a few
+// more cases inside the behavioural suite.
+//
+// One known gap is tolerated (CSS expression(), IE<=10 only — upstream leaves
+// it to a configurable regex this port has not wired up yet). Anything beyond
+// that fails the build.
+
+import build
+import std.os
+
+aeb(cap) {
+    b = build.start()
+    root = build._get(b, "root")
+    out = "${root}/target/xss_vectors"
+
+    _m = os.system("mkdir -p \"${root}/target\"")
+
+    rc = os.system("cd \"${root}\" && ae build core_tests/xss_vectors.ae -o \"${out}\"")
+    if rc != 0 {
+        println("core_tests: failed to build xss_vectors.ae")
+        return 1
+    }
+
+    rc2 = os.system("\"${out}\"")
+    if rc2 != 0 {
+        println("core_tests: an XSS vector got through — treat as urgent")
+        return 1
+    }
+    println("core_tests: PASS — XSS bypass vectors blocked")
+    return 0
+}

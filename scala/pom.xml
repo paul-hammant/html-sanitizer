@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Maven build for downstream consumers.
+
+  The in-tree conformance run (scala/.tests.ae) does NOT use Maven: it compiles
+  with a Scala compiler it locates itself and runs ConformanceTest's main
+  method, so the suite needs no artifact resolution and works offline. This POM
+  exists so a project depending on the Scala layer can build it the usual way.
+
+  Note the dependency: this module depends on org.htmlsanitizer:htmlsanitizer
+  (java/), and NOT on any FFI of its own. That is the whole design — one JVM
+  binding to the engine, four idiomatic layers over it.
+
+  The source targets Scala 2.13 and Scala 3 from one file; this POM builds the
+  Scala 3 artifact. Swap scalaVersion/artifact suffix for a 2.13 build.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>org.htmlsanitizer</groupId>
+  <artifactId>htmlsanitizer-scala_3</artifactId>
+  <version>1.0.0</version>
+  <packaging>jar</packaging>
+
+  <name>htmlsanitizer-scala</name>
+  <description>
+    Cleans HTML of constructs that can lead to XSS — idiomatic Scala over the
+    Java (FFM/Panama) binding of the shared Aether HtmlSanitizer engine. No
+    sanitizer logic and no FFI of its own.
+  </description>
+
+  <properties>
+    <scala.version>3.3.4</scala.version>
+    <!-- JDK 22+ is required at BUILD time as well as run time: the Java
+         binding's classes are 22+ bytecode, and scalac has to read them. -->
+    <maven.compiler.release>22</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.scala-lang</groupId>
+      <artifactId>scala3-library_3</artifactId>
+      <version>${scala.version}</version>
+    </dependency>
+    <!-- The one and only route to the engine. -->
+    <dependency>
+      <groupId>org.htmlsanitizer</groupId>
+      <artifactId>htmlsanitizer</artifactId>
+      <version>1.0.0</version>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <sourceDirectory>src/main/scala</sourceDirectory>
+    <testSourceDirectory>src/test/scala</testSourceDirectory>
+    <plugins>
+      <plugin>
+        <groupId>net.alchim31.maven</groupId>
+        <artifactId>scala-maven-plugin</artifactId>
+        <version>4.9.2</version>
+        <executions>
+          <execution>
+            <goals>
+              <goal>compile</goal>
+              <goal>testCompile</goal>
+            </goals>
+          </execution>
+        </executions>
+        <configuration>
+          <scalaVersion>${scala.version}</scalaVersion>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>3.4.1</version>
+        <configuration>
+          <archive>
+            <manifestEntries>
+              <!-- Inherited by anyone running the layer; FFM needs it. -->
+              <Enable-Native-Access>ALL-UNNAMED</Enable-Native-Access>
+            </manifestEntries>
+          </archive>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

@@ -1,0 +1,41 @@
+// The Java binding, compiled ONCE for the whole JVM family.
+//
+// Output: target/.aeb/java-classes — the org.htmlsanitizer package (FFM /
+// Panama). Published on this node's dep edge as the "classes_dir" artifact.
+//
+// Why this node exists at all: kotlin/, scala/, clojure/ and groovy/ are NOT
+// separate FFI bindings. There is exactly ONE FFI per runtime, and on the JVM
+// that is java/src/main/java — the four sibling bindings are thin idiomatic
+// layers reached by ordinary JVM interop. They therefore all need the same
+// compiled classes on their classpath, and compiling them five times (once per
+// consumer) would be both slow and a chance for the five copies to drift.
+// So: one build node, five consumers, one `build.dep_artifact(..., "classes_dir")`.
+//
+// javac only — no Maven. The main sources have no third-party dependency
+// (FFM is stdlib since JDK 22), so this needs nothing but a JDK and can never
+// fail on artifact resolution. java/pom.xml remains for downstream consumers.
+import build
+import std.os
+
+aeb(cap) {
+    b = build.start()
+    root = build._get(b, "root")
+
+    out = "${root}/target/.aeb/java-classes"
+
+    // Fresh directory each time: a stale .class from a since-renamed source
+    // would otherwise stay on every downstream binding's classpath.
+    rc = os.system("cd \"${root}/java\" && rm -rf \"${out}\" && mkdir -p \"${out}\" && javac -d \"${out}\" $(find src/main/java -name '*.java')")
+    if rc != 0 {
+        println("java: javac failed (need JDK 22+ for the FFM API; JDK 24 tested)")
+        return 1
+    }
+    println("java: built org.htmlsanitizer classes")
+
+    // Every JVM-family binding reads this back with
+    //   build.dep_artifact(b, "java/.build.ae", "classes_dir")
+    // rather than hardcoding the path — same contract as core/.build.ae's
+    // "shared_lib".
+    build.publish_artifact(b, "classes_dir", out)
+    return 0
+}

@@ -1,0 +1,19 @@
+%% OTP application resource for the canonical BEAM binding.
+%%
+%% The app is named after the NIF rather than the friendly module because it
+%% is the ARTIFACT the other two BEAM bindings consume: elixir/ and gleam/ put
+%% this app's directory on ERL_LIBS and load the very same compiled
+%% htmlsanitizer_nif.beam + priv/htmlsanitizer_nif.so. One NIF, three
+%% languages.
+%%
+%% No `mod` key: there is no supervision tree to start. A sanitizer is a
+%% resource owned by whoever created it, not a named process, so nothing here
+%% needs an application controller.
+{application, htmlsanitizer_nif,
+ [{description, "HTML sanitizer NIF over the shared Aether engine (canonical BEAM binding)"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {applications, [kernel, stdlib]},
+  {modules, [htmlsanitizer, htmlsanitizer_nif]},
+  {env, []}
+ ]}.

@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Maven build for downstream consumers.
+
+  The in-tree conformance run (groovy/.tests.ae) does NOT use Maven: it
+  compiles with a Groovy jar it locates itself and runs ConformanceTest's main
+  method, so the suite needs no artifact resolution and works offline. This POM
+  exists so a project depending on the Groovy layer can build it the usual way.
+
+  Note the dependency: this module depends on org.htmlsanitizer:htmlsanitizer
+  (java/), and NOT on any FFI of its own. That is the whole design — one JVM
+  binding to the engine, four idiomatic layers over it.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>org.htmlsanitizer</groupId>
+  <artifactId>htmlsanitizer-groovy</artifactId>
+  <version>1.0.0</version>
+  <packaging>jar</packaging>
+
+  <name>htmlsanitizer-groovy</name>
+  <description>
+    Cleans HTML of constructs that can lead to XSS — an idiomatic Groovy DSL
+    over the Java (FFM/Panama) binding of the shared Aether HtmlSanitizer
+    engine. No sanitizer logic and no FFI of its own.
+  </description>
+
+  <properties>
+    <!-- Groovy 4 is the floor, and not for style reasons: groovyc LOADS the
+         classes it compiles against, so it must be able to read the Java
+         binding's JDK 22+ bytecode. Groovy 4 also supplies withCloseable. -->
+    <groovy.version>4.0.24</groovy.version>
+    <maven.compiler.release>22</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.apache.groovy</groupId>
+      <artifactId>groovy</artifactId>
+      <version>${groovy.version}</version>
+    </dependency>
+    <!-- The one and only route to the engine. -->
+    <dependency>
+      <groupId>org.htmlsanitizer</groupId>
+      <artifactId>htmlsanitizer</artifactId>
+      <version>1.0.0</version>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <sourceDirectory>src/main/groovy</sourceDirectory>
+    <testSourceDirectory>src/test/groovy</testSourceDirectory>
+    <resources>
+      <!-- Carries META-INF/groovy/...ExtensionModule, which is what registers
+           the operator extensions. Without it on the classpath the DSL still
+           works but `<<`, `-`, `[]` and `.text` silently do not exist. -->
+      <resource><directory>src/main/resources</directory></resource>
+    </resources>
+    <plugins>
+      <plugin>
+        <groupId>org.codehaus.gmavenplus</groupId>
+        <artifactId>gmavenplus-plugin</artifactId>
+        <version>3.0.2</version>
+        <executions>
+          <execution>
+            <goals>
+              <goal>compile</goal>
+              <goal>compileTests</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>3.4.1</version>
+        <configuration>
+          <archive>
+            <manifestEntries>
+              <!-- Inherited by anyone running the layer; FFM needs it. -->
+              <Enable-Native-Access>ALL-UNNAMED</Enable-Native-Access>
+            </manifestEntries>
+          </archive>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

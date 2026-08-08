@@ -1,0 +1,34 @@
+// Pharo binding tests (UnifiedFFI).
+//
+// Unlike kotlin/scala/clojure/groovy — which are thin layers over the Java
+// binding and therefore dep java/.build.ae — Pharo is NOT a JVM, so this is a
+// REAL FFI against the C ABI. It deps only core/.build.ae, for the .so that
+// HTMLSANITIZER_LIB points at.
+//
+// pharo/run-tests.sh loads the Tonel sources into a THROWAWAY copy of a Pharo
+// image (loading code mutates an image permanently, so the developer's own is
+// left alone) and runs SUnit headless. Needs a Pharo VM; without one the node
+// SKIPS rather than reporting a false pass.
+import build
+import std.os
+
+aeb(cap) {
+    b = build.start()
+    build.dep(b, "core/.build.ae")
+    lib = build.dep_artifact(b, "core/.build.ae", "shared_lib")
+    root = build._get(b, "root")
+
+    rc = os.system("cd \"${root}/pharo\" && HTMLSANITIZER_LIB=\"${lib}\" ./run-tests.sh")
+    if rc == 77 {
+        // 77 is this monorepo's "toolchain absent" code, chosen because no
+        // compiler or VM uses it for a real failure.
+        println("pharo: SKIPPED — no Pharo VM installed")
+        return 0
+    }
+    if rc != 0 {
+        println("pharo: conformance suite reported failures")
+        return 1
+    }
+    println("pharo: PASS — 12-check conformance + callback shapes")
+    return 0
+}

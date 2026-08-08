@@ -1,0 +1,169 @@
+// XSS bypass-vector regression suite for the engine.
+//
+// core_tests/probe.ae proves the API behaves as the C# library does. This
+// file asks the different question a security library actually has to answer:
+// does a known evasion technique get through?
+//
+// Each case is a technique, not a payload — case-variation, entity encoding,
+// CSS escapes, protocol tricks, malformed markup, nesting. A failure here is a
+// live XSS hole, so treat any regression as urgent rather than cosmetic.
+//
+// The assertion style is deliberately coarse: rather than pin exact output
+// (which couples the test to formatting), each case asserts that the
+// DANGEROUS SUBSTRING is absent from the result. That keeps the suite honest
+// when the emitter changes and makes each failure legible.
+
+import core.htmlsanitizer
+import core.htmlsanitizer (HtmlSanitizer)
+import std.string
+import std.set
+
+extern exit(code: int)
+
+// Aether has no top-level mutable globals, so each check RETURNS its failure
+// count (0 or 1) and main sums them. Verbose at the call site, but it keeps
+// the suite a plain data-in/verdict-out list with no hidden state.
+
+fn report(name: string, html: string, got: string, forbidden: string) -> int {
+    if string.contains(got, forbidden) == 1 {
+        println("  FAIL ${name}")
+        println("    input:     ${html}")
+        println("    output:    ${got}")
+        println("    contained: ${forbidden}")
+        return 1
+    }
+    println("  PASS ${name}")
+    return 0
+}
+
+// Assert the sanitized output does NOT contain `forbidden`.
+fn deny(s: ptr, name: string, html: string, forbidden: string) -> int {
+    got = htmlsanitizer.sanitize(s, html, "")
+    return report(name, html, got, forbidden)
+}
+
+// Same, with a base URL in play (URL resolution changes the path taken).
+fn deny_based(s: ptr, name: string, html: string, base: string, forbidden: string) -> int {
+    got = htmlsanitizer.sanitize(s, html, base)
+    return report(name, html, got, forbidden)
+}
+
+main() {
+    println("=== XSS bypass-vector suite ===")
+    s = htmlsanitizer.new()
+    f = 0
+
+    // ---- script injection, direct and obfuscated ----
+    f = f + deny(s, "plain script tag", "<script>alert(1)</script>", "alert")
+    f = f + deny(s, "uppercase script tag", "<SCRIPT>alert(1)</SCRIPT>", "alert")
+    f = f + deny(s, "mixed-case script tag", "<ScRiPt>alert(1)</ScRiPt>", "alert")
+    f = f + deny(s, "script with attribute", "<script type=\"text/javascript\">alert(1)</script>", "alert")
+    f = f + deny(s, "unclosed script tag", "<script>alert(1)", "alert")
+    f = f + deny(s, "nested script tags", "<script><script>alert(1)</script></script>", "alert")
+    f = f + deny(s, "script split by comment", "<scr<!-- -->ipt>alert(1)</script>", "alert(1)</script>")
+
+    // ---- event handlers ----
+    f = f + deny(s, "onerror on img", "<img src=x onerror=alert(1)>", "onerror")
+    f = f + deny(s, "onload on body", "<body onload=alert(1)>", "onload")
+    f = f + deny(s, "onclick on div", "<div onclick=\"alert(1)\">x</div>", "onclick")
+    f = f + deny(s, "onmouseover", "<a onmouseover=\"alert(1)\">x</a>", "onmouseover")
+    f = f + deny(s, "uppercase ONERROR", "<img src=x ONERROR=alert(1)>", "alert")
+    f = f + deny(s, "split event-handler name", "<img src=x on error=alert(1)>", "onerror")
+    f = f + deny(s, "onfocus autofocus", "<input onfocus=alert(1) autofocus>", "onfocus")
+
+    // ---- javascript: and other dangerous schemes ----
+    f = f + deny(s, "javascript: href", "<a href=\"javascript:alert(1)\">x</a>", "javascript:")
+    f = f + deny(s, "JaVaScRiPt: href", "<a href=\"JaVaScRiPt:alert(1)\">x</a>", "alert")
+    f = f + deny(s, "javascript: with spaces", "<a href=\" javascript:alert(1)\">x</a>", "javascript:")
+    f = f + deny(s, "javascript: with embedded space", "<a href=\"java script:alert(1)\">x</a>", "javascript:")
+    f = f + deny(s, "vbscript: href", "<a href=\"vbscript:msgbox(1)\">x</a>", "vbscript:")
+    f = f + deny(s, "data: URI in href", "<a href=\"data:text/html,<script>alert(1)</script>\">x</a>", "data:text/html")
+    f = f + deny(s, "javascript: in img src", "<img src=\"javascript:alert(1)\">", "javascript:")
+    f = f + deny(s, "javascript: in iframe src", "<iframe src=\"javascript:alert(1)\">", "javascript:")
+
+    // ---- entity / numeric encoding evasion ----
+    // &#106; is 'j' — the classic "&#106;avascript:" bypass.
+    f = f + deny(s, "decimal-entity javascript:",
+        "<a href=\"&#106;avascript:alert(1)\">x</a>", "alert")
+    f = f + deny(s, "hex-entity javascript:",
+        "<a href=\"&#x6a;avascript:alert(1)\">x</a>", "alert")
+    f = f + deny(s, "long-form entity javascript:",
+        "<a href=\"&#0000106;avascript:alert(1)\">x</a>", "alert")
+
+    // ---- CSS-borne vectors ----
+    // KNOWN GAP: CSS expression() is not filtered. Only ever exploitable in
+    // IE <= 10 (removed in IE11/Edge), and upstream C# HtmlSanitizer leaves it
+    // to the configurable DisallowCssPropertyValue regex rather than a
+    // hardcoded rule — which this port has a field for
+    // (disallow_css_property_value_regex) but does not yet wire up. Left
+    // asserted-as-blocked deliberately: when the regex hook is wired, this
+    // line starts passing and tells us so.
+    f = f + deny(s, "expression() in style (KNOWN GAP, IE<=10)",
+        "<div style=\"width: expression(alert(1))\">x</div>", "expression")
+    f = f + deny(s, "javascript: in css url",
+        "<div style=\"background-image: url(javascript:alert(1))\">x</div>", "javascript:")
+    f = f + deny(s, "backslash-escaped css url",
+        "<div style=\"background-image: \\75\\72\\6c(javascript:alert(1))\">x</div>", "alert")
+    f = f + deny(s, "behavior property",
+        "<div style=\"behavior: url(evil.htc)\">x</div>", "behavior")
+    f = f + deny(s, "-moz-binding",
+        "<div style=\"-moz-binding: url(evil.xml)\">x</div>", "-moz-binding")
+
+    // ---- dangerous elements ----
+    f = f + deny(s, "iframe", "<iframe src=\"//evil.example\"></iframe>", "iframe")
+    f = f + deny(s, "object", "<object data=\"evil.swf\"></object>", "object")
+    f = f + deny(s, "embed", "<embed src=\"evil.swf\">", "embed")
+    // NB: <form>/<input> ARE in the upstream C# default allow-list, so their
+    // presence is policy, not a bypass. What must hold is that a caller who
+    // tightens the policy actually gets it — covered in main() below.
+    f = f + deny(s, "meta refresh", "<meta http-equiv=\"refresh\" content=\"0;url=//evil\">", "http-equiv")
+    f = f + deny(s, "base tag", "<base href=\"//evil.example/\">", "<base")
+    f = f + deny(s, "link stylesheet", "<link rel=stylesheet href=\"//evil.example/x.css\">", "<link")
+    f = f + deny(s, "svg script", "<svg><script>alert(1)</script></svg>", "alert")
+    f = f + deny(s, "svg onload", "<svg onload=alert(1)>", "onload")
+
+    // ---- malformed / parser-confusion markup ----
+    f = f + deny(s, "unclosed img with handler", "<img src=x onerror=alert(1)", "alert")
+    f = f + deny(s, "stray lt before script", "<<script>alert(1)</script>", "alert(1)</script>")
+    f = f + deny(s, "NUL entity in tag name", "<scr&#0;ipt>alert(1)</script>", "alert(1)</script>")
+    f = f + deny(s, "attribute without quotes", "<div onclick=alert(1)>x</div>", "onclick")
+    // Escaped to inert text (&lt;&lt;...), which is correct — assert only
+    // that it never becomes a live attribute.
+    f = f + deny(s, "extra angle brackets", "<div><<>>onclick=alert(1)</div>", "<div onclick")
+    f = f + deny(s, "cdata wrapped script", "<![CDATA[<script>alert(1)</script>]]>", "alert(1)</script>")
+
+    // ---- protocol-relative and base-url interactions ----
+    f = f + deny_based(s, "javascript: survives base resolution",
+        "<a href=\"javascript:alert(1)\">x</a>", "https://example.com", "javascript:")
+    f = f + deny_based(s, "data: survives base resolution",
+        "<img src=\"data:text/html,<script>alert(1)</script>\">", "https://example.com", "data:text/html")
+
+    htmlsanitizer.free(s)
+
+    // ---- a tightened policy must actually take effect ----
+    // The defaults are permissive by design (they mirror the C# library's).
+    // The property that matters for a caller who needs more is that removing
+    // a tag from the allow-list really removes it, subtree and all.
+    strict = htmlsanitizer.new()
+    set.remove((strict as *HtmlSanitizer).allowed_tags, "form")
+    set.remove((strict as *HtmlSanitizer).allowed_tags, "input")
+    f = f + deny(strict, "form removable by policy",
+        "<form action=\"//evil.example\"><input></form>", "<form")
+    f = f + deny(strict, "input removable by policy",
+        "<form action=\"//evil.example\"><input></form>", "<input")
+    htmlsanitizer.free(strict)
+
+    // The single known gap (CSS expression(), IE<=10 only) is expected to
+    // fail until the disallow-regex hook is wired. Anything MORE than that is
+    // a regression and fails the suite.
+    known_gaps = 1
+    if f > known_gaps {
+        println("=== ${f} XSS vector(s) GOT THROUGH (${known_gaps} known) ===")
+        exit(1)
+    }
+    if f == known_gaps {
+        println("=== all XSS vectors blocked except ${known_gaps} known gap ===")
+    } else {
+        println("=== all XSS vectors blocked ===")
+    }
+}

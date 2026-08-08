@@ -1,0 +1,92 @@
+// Haskell binding tests (GHC FFI). Like go/ and unlike the dlopen-based
+// bindings, this one LINKS the engine, so the .so must exist at BUILD time as
+// well as run time. We dep the shared engine node and stage its artifact into
+// haskell/native/ so both the link and the baked-in rpath resolve no matter
+// where aeb put the artifact.
+//
+// The conformance suite is a plain assertion runner (haskell/test/Conformance.hs)
+// with its own exit code, depending on nothing but `base` and `bytestring` —
+// both of which ship inside GHC. That is deliberate: it lets `runghc` drive the
+// whole suite with no `cabal update`, no network, and no package store, which
+// is the same offline posture as php/.tests.ae and dotnet/.tests.ae.
+import build
+import std.os
+
+aeb(cap) {
+    b = build.start()
+    build.dep(b, "core/.build.ae")
+    lib = build.dep_artifact(b, "core/.build.ae", "shared_lib")
+    root = build._get(b, "root")
+
+    // Skip honestly rather than fail the DAG when the toolchain is absent.
+    // GHC is a multi-gigabyte install; a box without it has a missing
+    // toolchain, not a broken binding.
+    //
+    // `cabal` alone is not enough. It is a build tool, not a compiler — a box
+    // with cabal but no ghc (a bare `cabal-install` package, or a ghcup that
+    // has installed the tool but not yet a compiler) can do nothing here, and
+    // saying "ghc not installed" is the honest report either way.
+    have = os.system("command -v ghc >/dev/null 2>&1")
+    if have != 0 {
+        println("haskell: SKIPPED — ghc not installed (no GHC toolchain on PATH)")
+        return 0
+    }
+
+    // runghc ships alongside ghc in every distribution of it, but check rather
+    // than assume: a stripped container image can carry the compiler without
+    // the script runner. Fall back to cabal only if it is actually present —
+    // and note that `cabal run` may want the network on a cold store, which is
+    // exactly why runghc is the preferred driver rather than the fallback.
+    runner = os.system("command -v runghc >/dev/null 2>&1")
+    if runner != 0 {
+        cabal = os.system("command -v cabal >/dev/null 2>&1")
+        if cabal != 0 {
+            println("haskell: SKIPPED — ghc is present but neither runghc nor cabal is (incomplete GHC install)")
+            return 0
+        }
+    }
+
+    // Stage the engine where the .cabal's extra-lib-dirs and the rpath both
+    // point. The compile below links against it by name.
+    dest = "${root}/haskell/native"
+    _m = os.system("mkdir -p \"${dest}\"")
+    cp = os.system("cp -f \"${lib}\" \"${dest}/libhtmlsanitizer.so\"")
+    if cp != 0 {
+        println("haskell: could not stage the engine into haskell/native")
+        return 1
+    }
+
+    // Drive the suite with runghc by preference, NOT cabal. cabal wants a
+    // package database and, on a cold box, a `cabal update` — a network round
+    // trip before a single assertion runs. runghc compiles the modules
+    // in-place from base + bytestring alone, both of which are inside GHC.
+    //
+    //   -isrc -itest       the two source roots
+    //   -Lnative           find libhtmlsanitizer at link time
+    //   -lhtmlsanitizer    ... and link it
+    //   -optl-Wl,-rpath,…  so the loader finds it at run time too
+    //
+    // LD_LIBRARY_PATH is belt-and-braces next to the rpath: runghc runs the
+    // program through the bytecode interpreter, which resolves the engine
+    // through the ordinary loader search path rather than a linked-in rpath.
+    if runner == 0 {
+        rc = os.system("cd \"${root}/haskell\" && LD_LIBRARY_PATH=\"${dest}:$LD_LIBRARY_PATH\" runghc -isrc -itest -Lnative -L../core/native -lhtmlsanitizer -optl-Wl,-rpath,${dest} test/Conformance.hs")
+        if rc != 0 {
+            println("haskell: conformance suite reported failures")
+            return 1
+        }
+        println("haskell: PASS — 12-check conformance + callback shapes")
+        return 0
+    }
+
+    // Fallback: cabal. --offline keeps it from reaching for the network; if
+    // the store is cold it fails fast rather than hanging a CI box, and the
+    // message below says which of the two happened.
+    rc = os.system("cd \"${root}/haskell\" && LD_LIBRARY_PATH=\"${dest}:$LD_LIBRARY_PATH\" cabal test conformance --offline --test-show-details=direct")
+    if rc != 0 {
+        println("haskell: conformance suite reported failures (or `cabal --offline` could not resolve base/bytestring from a cold store)")
+        return 1
+    }
+    println("haskell: PASS — 12-check conformance + callback shapes")
+    return 0
+}

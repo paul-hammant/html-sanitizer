@@ -1,0 +1,32 @@
+// Engine-level tests: the pure-Aether sanitizer, exercised through the
+// `htmlsanitizer` module directly (no C ABI, no binding). This is the
+// behavioural spec — the 12 cases ported from the C# HtmlSanitizer suite.
+//
+// Deliberately does NOT dep core/.build.ae: this path proves the ENGINE,
+// and building the .so is irrelevant to it. The ABI is proven separately by
+// core_tests/.abi.ae.
+
+import build
+import std.os
+
+aeb(cap) {
+    b = build.start()
+    root = build._get(b, "root")
+    out = "${root}/target/probe"
+
+    _m = os.system("mkdir -p \"${root}/target\"")
+
+    rc = os.system("cd \"${root}\" && ae build core_tests/probe.ae -o \"${out}\"")
+    if rc != 0 {
+        println("core_tests: failed to build probe.ae")
+        return 1
+    }
+
+    rc2 = os.system("\"${out}\"")
+    if rc2 != 0 {
+        println("core_tests: probe.ae reported a failure")
+        return 1
+    }
+    println("core_tests: PASS — engine behaviour (12 cases)")
+    return 0
+}

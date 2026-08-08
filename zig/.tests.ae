@@ -1,0 +1,49 @@
+// Zig binding tests. Like the Go binding (and unlike the dlopen-based
+// Python/Ruby ones), Zig LINKS the engine, so the .so must exist at BUILD
+// time as well as run time. We dep the shared engine node and hand its
+// artifact path straight to `zig build` as -Dengine=..., which build.zig
+// turns into both a -L search path and an rpath — so the test binary links
+// AND then finds the library at run time, no matter where aeb put it.
+//
+// The suite itself is `zig test` blocks (src/conformance.zig, pulled in by
+// src/root.zig), so there is nothing to install and no package fetch: the
+// binding has no dependencies beyond libc and the engine.
+import build
+import std.os
+
+aeb(cap) {
+    b = build.start()
+    build.dep(b, "core/.build.ae")
+    lib = build.dep_artifact(b, "core/.build.ae", "shared_lib")
+    root = build._get(b, "root")
+
+    // Skip honestly rather than fail the DAG when the toolchain is absent.
+    have = os.system("command -v zig >/dev/null 2>&1")
+    if have != 0 {
+        println("zig: SKIPPED — zig not installed (no Zig toolchain on PATH)")
+        return 0
+    }
+
+    // Also stage the engine into zig/native. -Dengine already points the
+    // linker and the rpath at the artifact, so this is belt-and-braces for a
+    // developer running a bare `zig build test` afterwards without aeb — the
+    // native/ directory is second in build.zig's search order.
+    dest = "${root}/zig/native"
+    _m = os.system("mkdir -p \"${dest}\"")
+    cp = os.system("cp -f \"${lib}\" \"${dest}/libhtmlsanitizer.so\"")
+    if cp != 0 {
+        println("zig: could not stage the engine into zig/native")
+        return 1
+    }
+
+    // HTMLSANITIZER_LIB is set as well, for parity with every other binding
+    // and because build.zig honours it as the second resolution step; if the
+    // -Dengine flag were ever dropped the node would still work.
+    rc = os.system("cd \"${root}/zig\" && HTMLSANITIZER_LIB=\"${lib}\" zig build test -Dengine=\"${lib}\" --summary none")
+    if rc != 0 {
+        println("zig: conformance suite reported failures")
+        return 1
+    }
+    println("zig: PASS — 12-check conformance + callback shapes")
+    return 0
+}

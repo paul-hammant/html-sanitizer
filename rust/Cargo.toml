@@ -1,0 +1,12 @@
+[package]
+name = "htmlsanitizer"
+version = "1.0.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Cleans HTML of constructs that can lead to XSS — a binding over the shared Aether HtmlSanitizer engine."
+license = "MIT"
+keywords = ["html", "sanitizer", "xss", "security"]
+categories = ["web-programming", "api-bindings"]
+
+[dependencies]
+libloading = "0.8"

@@ -1,0 +1,24 @@
+// Ruby binding tests (Fiddle). The loader honors HTMLSANITIZER_LIB, which we
+// point at the shared engine artifact this node deps.
+import build
+import std.os
+
+aeb(cap) {
+    b = build.start()
+    build.dep(b, "core/.build.ae")
+    lib = build.dep_artifact(b, "core/.build.ae", "shared_lib")
+    root = build._get(b, "root")
+
+    // rspec is commonly a --user-install gem, whose bin dir is not on PATH by
+    // default. Prepend Gem.user_dir/bin so a developer who ran
+    // `gem install --user-install rspec` needs no further setup, and fall back
+    // to `ruby -S rspec` (which searches the gem paths) if the binstub is
+    // still not found.
+    rc = os.system("cd \"${root}/ruby\" && PATH=\"$(ruby -e 'print Gem.user_dir')/bin:$PATH\" HTMLSANITIZER_LIB=\"${lib}\" ruby -S rspec --format progress")
+    if rc != 0 {
+        println("ruby: rspec reported failures (is rspec installed? `gem install --user-install rspec`)")
+        return 1
+    }
+    println("ruby: PASS — 12-check conformance + callback shapes")
+    return 0
+}

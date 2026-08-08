@@ -1,0 +1,27 @@
+# Build manifest for the Gleam surface over the canonical BEAM NIF.
+#
+# NOTE what is NOT here: no `c_src`, no build hooks, no second .so. This
+# project compiles nothing native. The NIF is built once by erlang/.build.ae
+# and Gleam loads that already-compiled artifact — `gleam` honours $ERL_LIBS,
+# so gleam/.tests.ae just points it at the built app's parent directory.
+#
+# target = erlang is not the default-by-accident: this binding is a NIF, so it
+# cannot compile to JavaScript at all. Stating it makes the failure mode a
+# clear manifest error rather than a confusing missing-module error at runtime.
+name = "htmlsanitizer"
+version = "0.1.0"
+target = "erlang"
+
+description = "Clean HTML of XSS constructs — Gleam surface over the shared Aether engine"
+licences = ["MIT"]
+
+# `htmlsanitizer_nif` is deliberately NOT listed as a dependency: it is an OTP
+# app built outside Gleam (by erlang/.build.ae) and supplied on ERL_LIBS. Gleam
+# resolves @external(erlang, ...) calls at runtime against the code path, so no
+# compile-time dependency entry is needed or wanted — adding one would send
+# Gleam looking on hex.pm for a package that does not exist there.
+[dependencies]
+gleam_stdlib = ">= 0.34.0 and < 2.0.0"
+
+[dev-dependencies]
+gleeunit = ">= 1.0.0 and < 2.0.0"

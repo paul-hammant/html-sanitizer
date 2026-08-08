@@ -1,0 +1,29 @@
+{
+    "name": "paulhammant/htmlsanitizer",
+    "description": "Clean HTML of constructs that can lead to XSS. A thin ext-ffi binding over the shared HtmlSanitizer native engine — no sanitizer logic lives in PHP.",
+    "type": "library",
+    "license": "MIT",
+    "homepage": "https://github.com/paulhammant/html-sanitizer",
+    "keywords": ["html", "sanitizer", "xss", "security", "ffi"],
+    "require": {
+        "php": ">=8.1",
+        "ext-ffi": "*"
+    },
+    "autoload": {
+        "psr-4": {
+            "HtmlSanitization\\": "src/"
+        }
+    },
+    "scripts": {
+        "test": "php tests/conformance.php"
+    },
+    "scripts-descriptions": {
+        "test": "Run the 12-check binding conformance suite (no dependencies required)."
+    },
+    "suggest": {
+        "ext-ffi": "Required at run time; the engine is loaded with FFI::cdef."
+    },
+    "config": {
+        "sort-packages": true
+    }
+}

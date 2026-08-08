@@ -1,0 +1,34 @@
+// Go binding tests (cgo). Unlike the dlopen-based bindings, cgo LINKS the
+// engine, so the .so must exist at BUILD time as well as run time. The
+// #cgo LDFLAGS in htmlsanitizer.go already point -L/-rpath at
+// go/native and core/native; we dep the shared engine node and stage its
+// artifact into go/native so the link and the rpath both resolve no matter
+// where aeb put the artifact.
+import build
+import std.os
+
+aeb(cap) {
+    b = build.start()
+    build.dep(b, "core/.build.ae")
+    lib = build.dep_artifact(b, "core/.build.ae", "shared_lib")
+    root = build._get(b, "root")
+
+    dest = "${root}/go/native"
+    _m = os.system("mkdir -p \"${dest}\"")
+    cp = os.system("cp -f \"${lib}\" \"${dest}/libhtmlsanitizer.so\"")
+    if cp != 0 {
+        println("go: could not stage the engine into go/native")
+        return 1
+    }
+
+    // GOFLAGS=-mod=mod keeps this working in a sandbox with no module cache;
+    // the package has no third-party dependencies, so nothing is fetched.
+    // LD_LIBRARY_PATH is belt-and-braces next to the linked-in rpath.
+    rc = os.system("cd \"${root}/go\" && CGO_ENABLED=1 LD_LIBRARY_PATH=\"${dest}:$LD_LIBRARY_PATH\" go test ./... -count=1")
+    if rc != 0 {
+        println("go: `go test` reported failures (is a cgo-capable toolchain installed?)")
+        return 1
+    }
+    println("go: PASS — 12-check conformance + callback shapes")
+    return 0
+}

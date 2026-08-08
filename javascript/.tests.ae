@@ -1,0 +1,31 @@
+// JavaScript binding tests (koffi). The loader honors HTMLSANITIZER_LIB,
+// which we point at the shared engine artifact this node deps.
+import build
+import std.os
+
+aeb(cap) {
+    b = build.start()
+    build.dep(b, "core/.build.ae")
+    lib = build.dep_artifact(b, "core/.build.ae", "shared_lib")
+    root = build._get(b, "root")
+
+    // koffi is a native addon; it must be present before the suite runs.
+    // The `npm install` is skipped when node_modules/koffi already exists, so
+    // a developer offline after one successful install still gets a green run
+    // (the shell does the test — std.os has no exists()).
+    rc_i = os.system("cd \"${root}/javascript\" && { [ -d node_modules/koffi ] || npm install --no-audit --no-fund; }")
+    if rc_i != 0 {
+        println("javascript: npm install failed (koffi needed; network?)")
+        return 1
+    }
+
+    // node:test is built in — no test framework to install, so the only
+    // dependency this leaf can fail on is koffi itself.
+    rc = os.system("cd \"${root}/javascript\" && HTMLSANITIZER_LIB=\"${lib}\" node --test test/conformance.test.js")
+    if rc != 0 {
+        println("javascript: node --test reported failures")
+        return 1
+    }
+    println("javascript: PASS — 12-check conformance + callback shapes")
+    return 0
+}

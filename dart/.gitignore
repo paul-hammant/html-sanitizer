@@ -1,0 +1,4 @@
+# Written by `dart pub get`.
+.dart_tool/
+.packages
+pubspec.lock

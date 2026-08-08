@@ -1,0 +1,40 @@
+// Java binding tests (FFM / Panama, JDK 22+). The loader honors
+// HTMLSANITIZER_LIB, which we point at the shared engine artifact this
+// node deps.
+//
+// The binding classes themselves come from java/.build.ae — the same node the
+// kotlin/scala/clojure/groovy layers dep, so the JVM family all compile
+// against one set of classes rather than five private copies.
+//
+// Deliberately javac + a main-method runner rather than Maven: the suite then
+// needs nothing but a JDK, so it runs offline and cannot fail on artifact
+// resolution. java/pom.xml exists for downstream consumers.
+import build
+import std.os
+
+aeb(cap) {
+    b = build.start()
+    build.dep(b, "core/.build.ae")
+    build.dep(b, "java/.build.ae")
+    lib = build.dep_artifact(b, "core/.build.ae", "shared_lib")
+    classes = build.dep_artifact(b, "java/.build.ae", "classes_dir")
+    root = build._get(b, "root")
+
+    out = "${root}/target/.aeb/java-test-classes"
+    rc_c = os.system("cd \"${root}/java\" && rm -rf \"${out}\" && mkdir -p \"${out}\" && javac -cp \"${classes}\" -d \"${out}\" $(find src/test/java -name '*.java')")
+    if rc_c != 0 {
+        println("java: javac failed on the test sources")
+        return 1
+    }
+
+    // FFM is final in JDK 22, so --enable-preview is NOT needed; the native
+    // access flag is, and without it the JVM only warns today but will fail
+    // in a future release.
+    rc = os.system("cd \"${root}/java\" && HTMLSANITIZER_LIB=\"${lib}\" java --enable-native-access=ALL-UNNAMED -cp \"${classes}:${out}\" org.htmlsanitizer.ConformanceTest")
+    if rc != 0 {
+        println("java: conformance suite reported failures")
+        return 1
+    }
+    println("java: PASS — 12-check conformance + callback shapes")
+    return 0
+}

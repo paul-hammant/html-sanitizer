@@ -1,0 +1,74 @@
+cabal-version:      2.4
+name:               htmlsanitizer
+version:            0.1.0.0
+synopsis:           Clean HTML of constructs that can lead to XSS
+description:
+  A thin binding over the monorepo's ONE shared native engine
+  (@core/native/libhtmlsanitizer.so@, compiled from pure Aether). It contains
+  no sanitizer logic: every function marshals to an @aether_hs_embed_*@ call
+  across the C ABI described in @core/embed.ae@.
+  .
+  See @haskell/README.md@ for the ownership rules that matter when binding
+  this ABI — caller-owned result strings, borrowed DOM pointers inside
+  callbacks, and the @FunPtr@ lifetime rule.
+
+license:            MIT
+license-file:       ../LICENSE
+author:             Paul Hammant
+maintainer:         paul@hammant.org
+category:           Text, Web, Foreign
+build-type:         Simple
+extra-source-files: README.md
+
+-- The dependency set is deliberately tiny: base and bytestring only, both of
+-- which ship in a GHC installation. That is what lets `runghc` drive the test
+-- suite with no `cabal update`, no network, and no package store — see
+-- haskell/.tests.ae.
+
+common warnings
+  ghc-options: -Wall -Wcompat -Wincomplete-record-updates
+               -Wincomplete-uni-patterns -Wredundant-constraints
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  HtmlSanitizer
+                    HtmlSanitizer.Native
+  build-depends:    base       >=4.14 && <5
+                  , bytestring >=0.10 && <0.13
+  default-language: Haskell2010
+
+  -- We LINK the engine rather than dlopen it, so the shared library must exist
+  -- at BUILD time as well as run time. `.tests.ae` stages the artifact into
+  -- haskell/native/ before invoking the compiler; the second directory is the
+  -- in-tree location for a plain `cabal build` after `aeb core/.build.ae`.
+  extra-lib-dirs:   native
+                  , ../core/native
+  extra-libraries:  htmlsanitizer
+
+  -- Bake both directories in as rpath so the produced binary finds the engine
+  -- without LD_LIBRARY_PATH, matching how the other LINKED bindings (go/) do
+  -- it. These are relative rpaths, resolved against the process's working
+  -- directory rather than the binary — good enough in-tree, which is where
+  -- this runs; a distributable build wants `$ORIGIN`-relative instead.
+  --
+  -- NOTE the field syntax: ld-options is a whitespace-separated token list,
+  -- NOT the comma-separated list that extra-lib-dirs above is. Each -Wl,...
+  -- must be one unbroken token.
+  ld-options:       -Wl,-rpath,native -Wl,-rpath,../core/native
+
+test-suite conformance
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Conformance.hs
+  build-depends:    base
+                  , bytestring
+                  , htmlsanitizer
+  default-language: Haskell2010
+
+  -- The suite registers callbacks, so the engine calls back into Haskell from
+  -- inside `sanitize`. `-threaded` is not required for that to be correct (the
+  -- `safe` import handles the capability hand-off either way), but it is how a
+  -- real consumer will run, so we test in that configuration.
+  ghc-options:      -threaded -rtsopts

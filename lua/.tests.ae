@@ -1,0 +1,42 @@
+// Lua binding tests (a Lua 5.4 C extension). The extension dlopens the
+// engine and honors HTMLSANITIZER_LIB, which we point at the shared engine
+// artifact this node deps.
+import build
+import std.os
+
+aeb(cap) {
+    b = build.start()
+    build.dep(b, "core/.build.ae")
+    lib = build.dep_artifact(b, "core/.build.ae", "shared_lib")
+    root = build._get(b, "root")
+
+    // Skip honestly rather than fail the DAG when the toolchain is absent.
+    // Two things are needed: a C compiler, and Lua 5.4's dev headers.
+    cc = os.system("command -v cc >/dev/null 2>&1 || command -v gcc >/dev/null 2>&1")
+    if cc != 0 {
+        println("lua: SKIPPED — no C compiler (cc/gcc) on PATH")
+        return 0
+    }
+
+    hdr = os.system("pkg-config --exists lua5.4 2>/dev/null || pkg-config --exists lua-5.4 2>/dev/null || test -f /usr/include/lua5.4/lua.h || test -f /usr/local/include/lua.h")
+    if hdr != 0 {
+        println("lua: SKIPPED — Lua 5.4 headers not installed (apt install liblua5.4-dev)")
+        return 0
+    }
+
+    // run_tests.sh builds htmlsanitizer_native.so and picks an interpreter:
+    // the distro's lua5.4 when present, otherwise the small ./lua54 host it
+    // builds from lua/host/lua54.c (Debian 12 ships liblua5.4 without a 5.4
+    // binary, and a 5.3 interpreter cannot load a 5.4 extension).
+    rc = os.system("cd \"${root}/lua\" && HTMLSANITIZER_LIB=\"${lib}\" sh ./run_tests.sh")
+    if rc == 2 {
+        println("lua: SKIPPED — no Lua 5.4 interpreter available and none could be built")
+        return 0
+    }
+    if rc != 0 {
+        println("lua: conformance suite reported failures")
+        return 1
+    }
+    println("lua: PASS — 12-check conformance + callback shapes")
+    return 0
+}

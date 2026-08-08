@@ -1,0 +1,38 @@
+// The shared HtmlSanitizer engine, built ONCE for the whole monorepo.
+//
+// Output: core/native/libhtmlsanitizer.so — every binding's .tests.ae deps
+// this node and then links (cgo/NIF/ccall) or loads (ctypes/Fiddle/koffi/
+// FFM/uFFI, via HTMLSANITIZER_LIB) that single artifact.
+//
+// Source: core/embed.ae (the aether_hs_embed_* C ABI) imports the local
+// `htmlsanitizer` module (core/htmlsanitizer.ae) — the WHOLE sanitizer
+// (HTML5 tokenizer, DOM, CSS parser, URL resolver, allow-lists) is PURE
+// AETHER. The only C is core/_embed_support.c: the caller-owned-string
+// bridge and the callback trampolines, linked via `--extra`.
+//
+// No --with= capabilities: the sanitizer is a pure string->string transform.
+// It touches no filesystem, no network, no OS. That is a security property
+// worth keeping — if this ever needs `--with=fs`, something has gone wrong.
+
+import build
+import std.os
+
+aeb(cap) {
+    b = build.start()
+    root = build._get(b, "root")
+    dest = "${root}/core/native"
+    _m = os.system("mkdir -p \"${dest}\"")
+
+    rc = os.system("cd \"${root}/core\" && ae build --emit=lib embed.ae --extra _embed_support.c -o \"${dest}/libhtmlsanitizer.so\"")
+    if rc != 0 {
+        println("engine: failed to build libhtmlsanitizer.so (is `ae` installed and on PATH?)")
+        return 1
+    }
+    println("engine: built core/native/libhtmlsanitizer.so")
+
+    // Publish the .so onto this node's dep edge: every consumer reads it
+    // back via build.dep_artifact(b, "core/.build.ae", "shared_lib") — no
+    // hardcoded path, no coupling to core/native/ as the output dir.
+    build.publish_artifact(b, "shared_lib", "${dest}/libhtmlsanitizer.so")
+    return 0
+}

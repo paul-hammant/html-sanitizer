@@ -1,0 +1,48 @@
+// Nim binding tests (importc + a real link). Like the Go/cgo binding and
+// unlike the dlopen-based ones (Python/ctypes, Ruby/Fiddle, PHP/FFI), Nim
+// LINKS the engine, so the .so must exist at BUILD time as well as run time.
+//
+// The {.passL.} in nim/src/htmlsanitizer.nim already points -L/-rpath at both
+// nim/native and ../core/native; we dep the shared engine node and stage its
+// artifact into nim/native so the link and the rpath both resolve no matter
+// where aeb put the artifact.
+import build
+import std.os
+
+aeb(cap) {
+    b = build.start()
+    build.dep(b, "core/.build.ae")
+    lib = build.dep_artifact(b, "core/.build.ae", "shared_lib")
+    root = build._get(b, "root")
+
+    dest = "${root}/nim/native"
+    _m = os.system("mkdir -p \"${dest}\"")
+    cp = os.system("cp -f \"${lib}\" \"${dest}/libhtmlsanitizer.so\"")
+    if cp != 0 {
+        println("nim: could not stage the engine into nim/native")
+        return 1
+    }
+
+    // Skip honestly rather than fail the DAG when the toolchain is absent.
+    have = os.system("command -v nim >/dev/null 2>&1")
+    if have != 0 {
+        println("nim: SKIPPED — nim not installed (no Nim toolchain on PATH)")
+        return 0
+    }
+
+    // Driven with plain `nim c -r` rather than `nimble test`: nimble is not
+    // always installed alongside nim (choosenim ships both, a distro package
+    // often does not), and the suite has no third-party dependencies, so
+    // there is nothing for a package manager to do. htmlsanitizer.nimble is
+    // still the manifest for anyone consuming this as a package.
+    //
+    // --nimcache keeps the generated C out of the source tree. LD_LIBRARY_PATH
+    // is belt-and-braces next to the linked-in rpath.
+    rc = os.system("cd \"${root}/nim\" && LD_LIBRARY_PATH=\"${dest}:$LD_LIBRARY_PATH\" nim c -r --hints:off --nimcache:.nimcache tests/tconformance.nim")
+    if rc != 0 {
+        println("nim: conformance suite reported failures")
+        return 1
+    }
+    println("nim: PASS — 12-check conformance + callback shapes")
+    return 0
+}

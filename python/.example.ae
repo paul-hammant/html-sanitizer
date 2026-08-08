@@ -1,0 +1,58 @@
+// Third-party-consumer EXAMPLE test for the Python binding.
+//
+// Installs the packaged wheel (from python/.package.ae) into a CLEAN venv and
+// sanitizes from the INSTALLED package — no source tree on the path, and
+// HTMLSANITIZER_LIB explicitly unset, so only the wheel's bundled .so can
+// satisfy the load. Runs both supported .so-location modes.
+import build
+import std.os
+
+aeb(cap) {
+    b = build.start()
+    build.dep(b, "python/.package.ae")
+    root = build._get(b, "root")
+    exdir = "${root}/python/example"
+    venv = "${root}/target/python-consumer-venv"
+    wheel_dir = "${root}/python/dist"
+
+    rc0 = os.system("ls \"${wheel_dir}\"/*.whl >/dev/null 2>&1")
+    if rc0 != 0 {
+        println("python example: SKIPPED — no wheel (python/.package.ae did not produce one)")
+        return 0
+    }
+
+    // Preferred: a real venv, the closest thing to what a user does. Falls
+    // back to `pip install --target` when python3-venv is not installed (a
+    // separate distro package on Debian). Both give the property that
+    // matters — the package resolves from an install dir, NOT from the source
+    // tree, with HTMLSANITIZER_LIB unset — so the fallback still proves the
+    // wheel is self-sufficient rather than skipping the check.
+    site = "${root}/target/python-consumer-site"
+    py = "${venv}/bin/python"
+    pypath = ""
+
+    rc = os.system("rm -rf \"${venv}\" && python3 -m venv \"${venv}\" >/dev/null 2>&1 && \"${venv}/bin/pip\" install -q --disable-pip-version-check \"${wheel_dir}\"/*.whl")
+    if rc != 0 {
+        println("python example: no venv support — falling back to `pip install --target`")
+        rcf = os.system("rm -rf \"${site}\" && python3 -m pip install -q --break-system-packages --target \"${site}\" \"${wheel_dir}\"/*.whl")
+        if rcf != 0 {
+            println("python example: SKIPPED — could not install the wheel anywhere")
+            return 0
+        }
+        py = "python3"
+        pypath = "PYTHONPATH=\"${site}\""
+    }
+
+    rc2 = os.system("cd \"${exdir}\" && env -u HTMLSANITIZER_LIB ${pypath} \"${py}\" consumer_example.py explicit")
+    if rc2 != 0 {
+        println("python example: explicit-mode consumer run failed")
+        return 1
+    }
+    rc3 = os.system("cd \"${exdir}\" && env -u HTMLSANITIZER_LIB ${pypath} \"${py}\" consumer_example.py discovery")
+    if rc3 != 0 {
+        println("python example: discovery-mode consumer run failed")
+        return 1
+    }
+    println("python example: PASS — installed wheel works with no source tree and no env var")
+    return 0
+}

@@ -1,0 +1,35 @@
+// Dart binding tests (dart:ffi). The loader honors HTMLSANITIZER_LIB, which
+// we point at the shared engine artifact this node deps.
+import build
+import std.os
+
+aeb(cap) {
+    b = build.start()
+    build.dep(b, "core/.build.ae")
+    lib = build.dep_artifact(b, "core/.build.ae", "shared_lib")
+    root = build._get(b, "root")
+
+    // Skip honestly rather than fail the DAG when the toolchain is absent.
+    have = os.system("command -v dart >/dev/null 2>&1")
+    if have != 0 {
+        println("dart: SKIPPED — dart not installed (no Dart SDK on PATH)")
+        return 0
+    }
+
+    // `dart test` needs the package's dependencies resolved. This is the one
+    // network step; if the pub cache is already warm it is a no-op, and if it
+    // fails we skip rather than report a false failure of the binding.
+    pg = os.system("cd \"${root}/dart\" && dart pub get --no-example >/dev/null 2>&1")
+    if pg != 0 {
+        println("dart: SKIPPED — `dart pub get` failed (no pub cache and no network?)")
+        return 0
+    }
+
+    rc = os.system("cd \"${root}/dart\" && HTMLSANITIZER_LIB=\"${lib}\" dart test --reporter=expanded")
+    if rc != 0 {
+        println("dart: `dart test` reported failures")
+        return 1
+    }
+    println("dart: PASS — 12-check conformance + callback shapes")
+    return 0
+}

@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The conformance suite, as a plain console runner.
+
+    Deliberately NOT an xunit/NUnit project: every .NET test framework is a
+    NuGet package, so `dotnet test` needs a restore (i.e. a network round trip
+    or a pre-warmed cache) before the first assertion runs. This project has
+    zero PackageReferences, so `dotnet run` works offline and the process exit
+    code is the result. See the header comment in Conformance.cs.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>HtmlSanitization.Tests</RootNamespace>
+    <AssemblyName>HtmlSanitizer.Conformance</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+
+    <!--
+      Conformance.Main is the entry point. The class sits in the global
+      namespace (no `namespace` declaration in Conformance.cs), so the plain
+      type name is its full name — RootNamespace does not rename types.
+    -->
+    <StartupObject>Conformance</StartupObject>
+
+    <!--
+      No PackageReferences anywhere in this project or the one it references,
+      so restore is a local no-op and `dotnet run` never contacts nuget.org.
+      That is what makes this suite work offline — not any opt-out property.
+    -->
+    <DisableImplicitNuGetFallbackFolder>true</DisableImplicitNuGetFallbackFolder>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../src/HtmlSanitizer.csproj" />
+  </ItemGroup>
+
+</Project>

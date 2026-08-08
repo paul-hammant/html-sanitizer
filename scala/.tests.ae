@@ -1,0 +1,39 @@
+// Scala binding tests.
+//
+// The Scala layer is NOT a second FFI: it compiles against the Java binding's
+// classes (build.dep java/.build.ae -> "classes_dir") and reaches the engine
+// through them. So this node deps BOTH java/.build.ae (for the classpath) and
+// core/.build.ae (for the .so that HTMLSANITIZER_LIB points at).
+//
+// Toolchain note. scalac reads the Java binding's class files, which are JDK
+// 22+ bytecode because the FFM API requires it — so it must be new enough to
+// parse them (2.13.12+ / 3.3+) AND run on a JDK 22+ VM. scala/run-tests.sh
+// probes for a capable compiler and verifies it by compiling against the real
+// classes; if there is none, this node SKIPS rather than reporting a false pass.
+import build
+import std.os
+
+aeb(cap) {
+    b = build.start()
+    build.dep(b, "core/.build.ae")
+    build.dep(b, "java/.build.ae")
+    lib = build.dep_artifact(b, "core/.build.ae", "shared_lib")
+    classes = build.dep_artifact(b, "java/.build.ae", "classes_dir")
+    root = build._get(b, "root")
+
+    out = "${root}/target/.aeb/scala-classes"
+
+    rc = os.system("cd \"${root}/scala\" && HS_JAVA_CLASSES=\"${classes}\" HS_OUT=\"${out}\" HTMLSANITIZER_LIB=\"${lib}\" ./run-tests.sh")
+    if rc == 77 {
+        // 77 is this monorepo's "toolchain absent" code, chosen because no
+        // compiler or JVM uses it for a real failure.
+        println("scala: SKIPPED — no Scala compiler able to read JDK 22+ bytecode")
+        return 0
+    }
+    if rc != 0 {
+        println("scala: conformance suite reported failures")
+        return 1
+    }
+    println("scala: PASS — 12-check conformance + callback shapes")
+    return 0
+}

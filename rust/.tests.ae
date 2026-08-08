@@ -1,0 +1,21 @@
+// Rust binding tests (libloading). The loader honors HTMLSANITIZER_LIB,
+// which we point at the shared engine artifact this node deps.
+import build
+import std.os
+
+aeb(cap) {
+    b = build.start()
+    build.dep(b, "core/.build.ae")
+    lib = build.dep_artifact(b, "core/.build.ae", "shared_lib")
+    root = build._get(b, "root")
+
+    // --offline keeps the run reproducible and network-free once libloading
+    // is in the local cargo registry cache. Drop it for a first fetch.
+    rc = os.system("cd \"${root}/rust\" && HTMLSANITIZER_LIB=\"${lib}\" cargo test --offline")
+    if rc != 0 {
+        println("rust: cargo test reported failures (is libloading vendored/cached?)")
+        return 1
+    }
+    println("rust: PASS — 12-check conformance + callback shapes")
+    return 0
+}

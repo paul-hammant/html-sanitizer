@@ -1,0 +1,68 @@
+// Gleam binding tests (gleeunit).
+//
+// This node builds NO native code. It deps erlang/.build.ae — the canonical
+// BEAM NIF — and loads that already-compiled artifact. There is no C source
+// and no second .so in gleam/.
+//
+// Unlike Mix, `gleam` honours $ERL_LIBS, so pointing it at the PARENT of the
+// built app directory is all it takes for @external(erlang, "htmlsanitizer_nif",
+// ...) to resolve at runtime.
+//
+// Conformance checks 10 and 11 (the callback hooks) are NOT covered — a NIF
+// cannot synchronously call back into the BEAM, so the shared NIF exposes no
+// hooks. See gleam/README.md. The other ten are covered in full.
+import build
+import std.os
+
+aeb(cap) {
+    b = build.start()
+    build.dep(b, "core/.build.ae")
+    build.dep(b, "erlang/.build.ae")
+    lib = build.dep_artifact(b, "core/.build.ae", "shared_lib")
+    root = build._get(b, "root")
+
+    // Skip honestly rather than fail the DAG when the toolchain is absent.
+    have = os.system("command -v gleam >/dev/null 2>&1")
+    if have != 0 {
+        println("gleam: SKIPPED — gleam not installed (no Gleam toolchain on PATH)")
+        return 0
+    }
+
+    // Gleam compiles to the BEAM and needs a runtime to run the tests on.
+    erl = os.system("command -v erl >/dev/null 2>&1")
+    if erl != 0 {
+        println("gleam: SKIPPED — erl not installed (Gleam's erlang target needs OTP)")
+        return 0
+    }
+
+    // erlang/.build.ae skips (rather than fails) when erl_nif.h is missing, so
+    // the app may legitimately not exist. Without the NIF there is nothing to
+    // test, and that is an environment gap, not a binding failure.
+    app = "${root}/erlang/_build/htmlsanitizer_nif"
+    built = os.system("test -f \"${app}/priv/htmlsanitizer_nif.so\"")
+    if built != 0 {
+        println("gleam: SKIPPED — the shared BEAM NIF is not built (see erlang/.build.ae)")
+        return 0
+    }
+
+    // gleeunit and gleam_stdlib come from hex. In a sandbox with no network
+    // and no populated build cache, `gleam test` cannot resolve them — that is
+    // an environment gap, not a binding failure, so probe it before committing
+    // to a failure. `gleam deps download` is the cheapest honest probe.
+    deps = os.system("cd \"${root}/gleam\" && gleam deps download >/dev/null 2>&1")
+    if deps != 0 {
+        println("gleam: SKIPPED — hex dependencies unavailable offline (gleam deps download failed)")
+        return 0
+    }
+
+    // ERL_LIBS takes the PARENT of the app directory: OTP looks for
+    // <lib_dir>/<app_name>/ebin, so the entry must be erlang/_build, not
+    // erlang/_build/htmlsanitizer_nif.
+    rc = os.system("cd \"${root}/gleam\" && HTMLSANITIZER_LIB=\"${lib}\" ERL_LIBS=\"${root}/erlang/_build\" gleam test")
+    if rc != 0 {
+        println("gleam: conformance suite reported failures")
+        return 1
+    }
+    println("gleam: PASS — 10-check conformance (10/11 N/A: no NIF callbacks)")
+    return 0
+}

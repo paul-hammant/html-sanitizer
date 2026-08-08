@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Maven build for downstream consumers.
+
+  The in-tree conformance run (kotlin/.tests.ae) does NOT use Maven: it
+  compiles with a Kotlin compiler it locates itself and runs ConformanceTest's
+  main method, so the suite needs no artifact resolution and works offline.
+  This POM exists so a project depending on the Kotlin layer can build it the
+  usual way.
+
+  Note the dependency: this module depends on org.htmlsanitizer:htmlsanitizer
+  (java/), and NOT on any FFI of its own. That is the whole design — one JVM
+  binding to the engine, four idiomatic layers over it.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>org.htmlsanitizer</groupId>
+  <artifactId>htmlsanitizer-kotlin</artifactId>
+  <version>1.0.0</version>
+  <packaging>jar</packaging>
+
+  <name>htmlsanitizer-kotlin</name>
+  <description>
+    Cleans HTML of constructs that can lead to XSS — idiomatic Kotlin over the
+    Java (FFM/Panama) binding of the shared Aether HtmlSanitizer engine. No
+    sanitizer logic and no FFI of its own.
+  </description>
+
+  <properties>
+    <kotlin.version>2.0.21</kotlin.version>
+    <!-- JDK 22+ is required at BUILD time as well as run time: the Java
+         binding's classes are 22+ bytecode, and the Kotlin compiler has to
+         read them. -->
+    <maven.compiler.release>22</maven.compiler.release>
+    <kotlin.compiler.jvmTarget>22</kotlin.compiler.jvmTarget>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.jetbrains.kotlin</groupId>
+      <artifactId>kotlin-stdlib</artifactId>
+      <version>${kotlin.version}</version>
+    </dependency>
+    <!-- The one and only route to the engine. -->
+    <dependency>
+      <groupId>org.htmlsanitizer</groupId>
+      <artifactId>htmlsanitizer</artifactId>
+      <version>1.0.0</version>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <sourceDirectory>src/main/kotlin</sourceDirectory>
+    <testSourceDirectory>src/test/kotlin</testSourceDirectory>
+    <plugins>
+      <plugin>
+        <groupId>org.jetbrains.kotlin</groupId>
+        <artifactId>kotlin-maven-plugin</artifactId>
+        <version>${kotlin.version}</version>
+        <executions>
+          <execution>
+            <id>compile</id>
+            <phase>compile</phase>
+            <goals><goal>compile</goal></goals>
+          </execution>
+          <execution>
+            <id>test-compile</id>
+            <phase>test-compile</phase>
+            <goals><goal>test-compile</goal></goals>
+          </execution>
+        </executions>
+        <configuration>
+          <jvmTarget>${kotlin.compiler.jvmTarget}</jvmTarget>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>3.4.1</version>
+        <configuration>
+          <archive>
+            <manifestEntries>
+              <!-- Inherited by anyone running the layer; FFM needs it. -->
+              <Enable-Native-Access>ALL-UNNAMED</Enable-Native-Access>
+            </manifestEntries>
+          </archive>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

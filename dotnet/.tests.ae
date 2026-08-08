@@ -1,0 +1,41 @@
+// .NET binding tests (P/Invoke). The resolver honors HTMLSANITIZER_LIB, which
+// we point at the shared engine artifact this node deps.
+//
+// The conformance suite is a plain console runner (dotnet/test/Conformance.cs)
+// rather than an xunit/NUnit project, so it needs no NuGet restore and runs
+// offline. `dotnet run` returns the suite's own exit code.
+import build
+import std.os
+
+aeb(cap) {
+    b = build.start()
+    build.dep(b, "core/.build.ae")
+    lib = build.dep_artifact(b, "core/.build.ae", "shared_lib")
+    root = build._get(b, "root")
+
+    // Skip honestly rather than fail the DAG when the toolchain is absent.
+    have = os.system("command -v dotnet >/dev/null 2>&1")
+    if have != 0 {
+        println("dotnet: SKIPPED — dotnet not installed (no .NET SDK on PATH)")
+        return 0
+    }
+
+    // A `dotnet` on PATH is not necessarily an SDK — the runtime-only package
+    // provides the same binary but cannot build. Check before committing to a
+    // failure.
+    sdk = os.system("dotnet --list-sdks 2>/dev/null | grep -q .")
+    if sdk != 0 {
+        println("dotnet: SKIPPED — `dotnet` is present but no SDK is installed (runtime only)")
+        return 0
+    }
+
+    // Neither project has a PackageReference, so this restore is offline and
+    // local; --nologo keeps the log to the suite's own output.
+    rc = os.system("cd \"${root}/dotnet\" && HTMLSANITIZER_LIB=\"${lib}\" DOTNET_NOLOGO=1 DOTNET_CLI_TELEMETRY_OPTOUT=1 dotnet run --project test/HtmlSanitizer.Tests.csproj -c Release --nologo")
+    if rc != 0 {
+        println("dotnet: conformance suite reported failures")
+        return 1
+    }
+    println("dotnet: PASS — 12-check conformance + callback shapes")
+    return 0
+}

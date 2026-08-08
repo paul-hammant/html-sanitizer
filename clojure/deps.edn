@@ -1,0 +1,33 @@
+;; Clojure CLI build for downstream consumers.
+;;
+;; The in-tree conformance run (clojure/.tests.ae) does NOT need this file: it
+;; finds a Clojure runtime itself and runs the suite with clojure.main, so it
+;; works offline and cannot fail resolving anything. deps.edn is here so a
+;; project using the Clojure CLI can depend on this layer the usual way.
+;;
+;; Note what is NOT declared: any FFI dependency. This layer reaches the engine
+;; through the Java binding (org.htmlsanitizer/htmlsanitizer) and nothing else —
+;; one JVM binding to the engine, four idiomatic layers over it.
+{:paths ["src"]
+
+ :deps {org.clojure/clojure {:mvn/version "1.11.3"}
+        ;; The one and only route to the engine. Built from java/ — install it
+        ;; with `mvn -f ../java/pom.xml install`, or point :local/root at it.
+        org.htmlsanitizer/htmlsanitizer {:mvn/version "1.0.0"}}
+
+ :aliases
+ {;; `clojure -M:test` — the conformance suite.
+  ;;
+  ;; --enable-native-access is required by FFM; without it the JVM warns today
+  ;; and will refuse in a future release. HTMLSANITIZER_LIB must point at the
+  ;; engine .so (aeb sets it for you; see the README for a manual run).
+  :test
+  {:extra-paths ["test"]
+   :jvm-opts ["--enable-native-access=ALL-UNNAMED"]
+   :main-opts ["-m" "org.htmlsanitizer.conformance-test"]}
+
+  ;; Depend on the Java binding straight from the working tree rather than a
+  ;; published artifact — handy while developing the two together.
+  :local-java
+  {:override-deps {org.htmlsanitizer/htmlsanitizer
+                   {:local/root "../target/.aeb/java-classes"}}}}}

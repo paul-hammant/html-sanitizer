@@ -1,0 +1,41 @@
+// PHP binding tests (ext-ffi). The loader honors HTMLSANITIZER_LIB, which we
+// point at the shared engine artifact this node deps.
+//
+// The conformance suite is a plain assertion runner (php/tests/conformance.php)
+// rather than a PHPUnit suite, so it needs no `composer install` and runs
+// offline. It exits 0/1 on its own.
+import build
+import std.os
+
+aeb(cap) {
+    b = build.start()
+    build.dep(b, "core/.build.ae")
+    lib = build.dep_artifact(b, "core/.build.ae", "shared_lib")
+    root = build._get(b, "root")
+
+    // Skip honestly rather than fail the DAG when the toolchain is absent.
+    have = os.system("command -v php >/dev/null 2>&1")
+    if have != 0 {
+        println("php: SKIPPED — php not installed (no PHP CLI on PATH)")
+        return 0
+    }
+
+    // ext-ffi is a separate package on most distros (php-ffi) and is disabled
+    // by default in some builds. Without it there is nothing to test, and that
+    // is an environment gap, not a binding failure.
+    ffi = os.system("php -r 'exit(extension_loaded(\"ffi\") ? 0 : 1);' >/dev/null 2>&1")
+    if ffi != 0 {
+        println("php: SKIPPED — ext-ffi is not loaded (install php-ffi and set extension=ffi)")
+        return 0
+    }
+
+    // ffi.enable defaults to "preload" in some distro php.ini files, which
+    // blocks FFI::cdef from CLI scripts; -d overrides it for this run only.
+    rc = os.system("cd \"${root}/php\" && HTMLSANITIZER_LIB=\"${lib}\" php -d ffi.enable=1 tests/conformance.php")
+    if rc != 0 {
+        println("php: conformance suite reported failures")
+        return 1
+    }
+    println("php: PASS — 12-check conformance + callback shapes")
+    return 0
+}

@@ -1,0 +1,7 @@
+# Registers HtmlSanitizerExtensions, so the Java binding's types pick up Groovy
+# operators (<<, +, -, in, [], .text) without being wrapped. Wrapping would be
+# the wrong move: Node and Attribute are borrowed views that die when sanitize
+# returns, and a wrapper is exactly the thing someone retains by accident.
+moduleName=htmlsanitizer-groovy
+moduleVersion=1.0.0
+extensionClasses=org.htmlsanitizer.groovy.HtmlSanitizerExtensions
