@@ -7,49 +7,41 @@
 // Deliberately NOT java.junit: ConformanceTest is a plain `main` runner with
 // no JUnit dependency, so the suite needs nothing but a JDK and cannot fail
 // on artifact resolution. `java.junit` globs for *Test.class and drives the
-// JUnit console launcher, which would mean vendoring junit + hamcrest jars to
-// run twelve assertions we already express in ~300 lines. The class is
-// written so wrapping the checks in @Test is mechanical if that changes.
+// JUnit console launcher, which would mean vendoring junit + hamcrest to run
+// 21 assertions we already express in ~300 lines. The class is written so
+// wrapping the checks in @Test is mechanical if that changes.
 // java/pom.xml exists for downstream consumers who do want Maven.
 //
-// So: javac_test (SDK) for the compile, and a hand-rolled `java` for the run.
+// Fully idiomatic aeb: javac_test compiles, java_main runs. No os.system, and
+// no hand-reconstructed classpath — java_main owns where javac_test writes.
 //
-// The RUN step is the one thing here that cannot be an SDK builder yet.
-// lib/java exposes exactly two run builders — `junit` and `junit5` — and both
-// glob for *Test.class and drive the JUnit console launcher. There is no
-// "run this main class on the test classpath" builder, even though lib/kotlin
-// has precisely that (`kotlin_test(ctx, test_class)`, module.ae:561) and
-// lib/clojure has `run_main`. Filed as aeb/asks/java-run-main-builder.md.
-//
-// Consequence: this leaf reconstructs the test classpath by hand, which is
-// duplicated knowledge of where javac_test writes (target/test-classes).
+// The engine .so is found with NO plumbing here: core/.build.ae is an
+// aether.shared_lib, which publishes `ldlibdeps`, and java_main turns that
+// into -Djava.library.path. Native.java's platform search then finds
+// libhtmlsanitizer.so on it. That is the whole point of the artifact
+// contract — one dep edge, no paths in the leaf.
 import build
-import std.os
 import java
-import java (source_layout)
+import java (source_layout, jvm_args, skip_below_jdk)
 
 aeb(cap) {
     b = build.start()
     build.dep(b, "core/.build.ae")
     build.dep(b, "java/.build.ae")
-    lib = build.dep_artifact(b, "core/.build.ae", "shared_lib")
-    classes = build.dep_artifact(b, "java/.build.ae", "jvm_classpath_deps_including_transitive")
-    root = build._get(b, "root")
 
     java.javac_test(b) {
         source_layout("maven idiomatic")
     }
 
-    // Native.java resolves the engine from $HTMLSANITIZER_LIB. FFM is final
-    // in JDK 22 so --enable-preview is NOT needed; the native access flag is,
-    // and without it the JVM only warns today but will fail in a future
-    // release.
-    test_classes = "${root}/target/tests/java/test-classes"
-    rc = os.system("cd \"${root}/java\" && HTMLSANITIZER_LIB=\"${lib}\" java --enable-native-access=ALL-UNNAMED -cp \"${classes}:${test_classes}\" org.htmlsanitizer.ConformanceTest")
-    if rc != 0 {
-        println("java: conformance suite reported failures")
-        return 1
+    // skip_below_jdk, not min_jdk: FFM is final in JDK 22, and a box with an
+    // older JDK should SKIP green rather than fail the line — an
+    // under-provisioned node is a fact about the box, not a defect in the
+    // binding. min_jdk(22) is the hard form and would FAIL there.
+    //
+    // --enable-native-access silences the restricted-method warning; without
+    // it the JVM only warns today but will fail in a future release.
+    java.java_main(b, "org.htmlsanitizer.ConformanceTest") {
+        skip_below_jdk(22)
+        jvm_args("--enable-native-access=ALL-UNNAMED")
     }
-    println("java: PASS — 12-check conformance + callback shapes")
-    return 0
 }

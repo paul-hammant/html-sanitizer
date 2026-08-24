@@ -10,7 +10,11 @@
 //     (the Java layer is FFM/Panama) and only runs under JDK 17 itself. The
 //     SDK verifies the compiler rather than trusting PATH, and SKIPs (green,
 //     skip-counted) when nothing capable is found.
-//   - min_jdk(22) gates the RUN step for the same reason.
+//   - skip_below_jdk(22) gates the RUN step for the same reason. It is the
+//     SOFT floor: a box with only an older JDK is SKIPPED green rather than
+//     failing the line. min_jdk(22) is the hard form and would FAIL there —
+//     wrong for a portable conformance matrix, where an under-provisioned
+//     node is a fact about the box, not a defect in the binding.
 //   - kotlin-stdlib on the run classpath, resolved from the SAME install as
 //     the verified compiler — a 2.x compiler paired with a stale PATH-kotlinc
 //     stdlib is the subtle failure this avoids.
@@ -25,7 +29,7 @@
 
 import build
 import kotlin
-import kotlin (min_jdk, source_layout)
+import kotlin (skip_below_jdk, source_layout)
 // jvm_args lives in lib/java (the JVM-common setters), not lib/kotlin.
 import java (jvm_args)
 
@@ -49,12 +53,16 @@ aeb(cap) {
     }
 
     // The engine .so is dlopened by the Java layer at run time, so the JVM
-    // needs to find it. build's env() does NOT reach these builders — it
-    // stores under `proc_env`, which only the *project* builders drain — so
-    // the path goes in as a system property, which Native.java reads
-    // alongside $HTMLSANITIZER_LIB.
+    // needs to find it. java/.tests.ae no longer needs this: java_main calls
+    // _collect_ldlibdeps and emits -Djava.library.path from the `ldlibdeps`
+    // artifact that aether.shared_lib publishes. kotlin_test does NOT — only
+    // lib/java collects ldlibdeps; lib/kotlin, lib/scala, lib/groovy and
+    // lib/clojure all lack it. So the path still goes in by hand here, as a
+    // system property (build's env() does not reach SDK builders — it stores
+    // under `proc_env`, which only the *project* builders drain).
+    // Filed as aeb/asks/jvm-run-builders-except-java-omit-ldlibdeps.md.
     kotlin.kotlin_test(b, "org.htmlsanitizer.kotlin.ConformanceTest") {
-        min_jdk(22)
+        skip_below_jdk(22)
         jvm_args("--enable-native-access=ALL-UNNAMED")
         jvm_args("-Dhtmlsanitizer.lib=${lib}")
     }

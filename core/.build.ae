@@ -1,6 +1,6 @@
 // The shared HtmlSanitizer engine, built ONCE for the whole monorepo.
 //
-// Output: core/native/libhtmlsanitizer.so — every binding's .tests.ae deps
+// Output: target/core/lib/libhtmlsanitizer.so — every binding's .tests.ae deps
 // this node and then links (cgo/NIF/ccall) or loads (ctypes/Fiddle/koffi/
 // FFM/uFFI, via HTMLSANITIZER_LIB) that single artifact.
 //
@@ -8,55 +8,30 @@
 // `htmlsanitizer` module (core/htmlsanitizer.ae) — the WHOLE sanitizer
 // (HTML5 tokenizer, DOM, CSS parser, URL resolver, allow-lists) is PURE
 // AETHER. The only C is core/_embed_support.c: the caller-owned-string
-// bridge and the callback trampolines, linked via `--extra`.
+// bridge and the callback trampolines, linked via --extra.
 //
-// No --with= capabilities: the sanitizer is a pure string->string transform.
-// It touches no filesystem, no network, no OS. That is a security property
-// worth keeping — if this ever needs `--with=fs`, something has gone wrong.
+// No caps(): the sanitizer is a pure string->string transform. It touches no
+// filesystem, no network, no OS. That is a security property worth keeping —
+// if this ever needs caps("fs"), something has gone wrong.
 //
-// WHY THIS NODE STILL SHELLS OUT, when every other leaf here now uses an SDK
-// builder: aeb's `lib/aether` has `program`, `program_test` and `csrc`, but
-// no shared-library builder — nothing that wraps `ae build --emit=lib`. It
-// CONSUMES `.so`s (`_collect_shared_libs` reads
-// `shared_library_deps_including_transitive`) but never PRODUCES one, so
-// `lib/go` and `lib/rust` publish the `ldlibdeps` artifact that the JVM/Go
-// builders auto-wire into `-Djava.library.path` / `LD_LIBRARY_PATH`, and
-// `lib/aether` does not.
-//
-// That asymmetry is the reason consumers below still pass the path by hand.
-// Filed as aeb/asks/aether-shared-lib-builder.md. When `aether.shared_lib`
-// lands, this becomes a four-line leaf and ~15 consumers lose their manual
-// library-path plumbing.
+// aether.shared_lib publishes the whole native-lib wiring set for us —
+// shared_lib, shared_library, ldlibdeps and
+// shared_library_deps_including_transitive. The last two are what lib/java
+// (-Djava.library.path) and lib/go (LD_LIBRARY_PATH) read, so a JVM or Go
+// consumer that deps this node finds the .so with NO path plumbing in its
+// leaf. Until this builder landed we hand-published those names ourselves,
+// guessing at an internal contract; now the builder owns it.
 
 import build
-import std.os
+import aether
+import aether (source, extra_source, output)
 
 aeb(cap) {
     b = build.start()
-    root = build._get(b, "root")
-    dest = "${root}/core/native"
-    _m = os.system("mkdir -p \"${dest}\"")
-
-    rc = os.system("cd \"${root}/core\" && ae build --emit=lib embed.ae --extra _embed_support.c -o \"${dest}/libhtmlsanitizer.so\"")
-    if rc != 0 {
-        println("engine: failed to build libhtmlsanitizer.so (is `ae` installed and on PATH?)")
-        return 1
+    aether.shared_lib(b) {
+        // source() defaults to <moduledir>.ae — ours is embed.ae.
+        source("embed.ae")
+        extra_source("_embed_support.c")
+        output("libhtmlsanitizer.so")
     }
-    println("engine: built core/native/libhtmlsanitizer.so")
-
-    // Publish the .so onto this node's dep edge: every consumer reads it
-    // back via build.dep_artifact(b, "core/.build.ae", "shared_lib") — no
-    // hardcoded path, no coupling to core/native/ as the output dir.
-    //
-    // `ldlibdeps` and `shared_library_deps_including_transitive` are the SAME
-    // path under the names aeb's own SDK builders use. Publishing both means a JVM or Go consumer that deps this node
-    // gets its library path wired automatically (lib/java reads `ldlibdeps`
-    // at module.ae:947 and emits -Djava.library.path), exactly as it would
-    // for a rust cdylib — while `shared_lib` keeps the explicit name the
-    // ctypes/Fiddle/koffi bindings read for HTMLSANITIZER_LIB.
-    build.publish_artifact(b, "shared_lib", "${dest}/libhtmlsanitizer.so")
-    build.publish_artifact(b, "ldlibdeps", "${dest}/libhtmlsanitizer.so")
-    build.publish_artifact(b, "shared_library_deps_including_transitive",
-                           "${dest}/libhtmlsanitizer.so")
-    return 0
 }
