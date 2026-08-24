@@ -13,6 +13,20 @@
 // No --with= capabilities: the sanitizer is a pure string->string transform.
 // It touches no filesystem, no network, no OS. That is a security property
 // worth keeping — if this ever needs `--with=fs`, something has gone wrong.
+//
+// WHY THIS NODE STILL SHELLS OUT, when every other leaf here now uses an SDK
+// builder: aeb's `lib/aether` has `program`, `program_test` and `csrc`, but
+// no shared-library builder — nothing that wraps `ae build --emit=lib`. It
+// CONSUMES `.so`s (`_collect_shared_libs` reads
+// `shared_library_deps_including_transitive`) but never PRODUCES one, so
+// `lib/go` and `lib/rust` publish the `ldlibdeps` artifact that the JVM/Go
+// builders auto-wire into `-Djava.library.path` / `LD_LIBRARY_PATH`, and
+// `lib/aether` does not.
+//
+// That asymmetry is the reason consumers below still pass the path by hand.
+// Filed as aeb/asks/aether-shared-lib-builder.md. When `aether.shared_lib`
+// lands, this becomes a four-line leaf and ~15 consumers lose their manual
+// library-path plumbing.
 
 import build
 import std.os
@@ -33,6 +47,16 @@ aeb(cap) {
     // Publish the .so onto this node's dep edge: every consumer reads it
     // back via build.dep_artifact(b, "core/.build.ae", "shared_lib") — no
     // hardcoded path, no coupling to core/native/ as the output dir.
+    //
+    // `ldlibdeps` and `shared_library_deps_including_transitive` are the SAME
+    // path under the names aeb's own SDK builders use. Publishing both means a JVM or Go consumer that deps this node
+    // gets its library path wired automatically (lib/java reads `ldlibdeps`
+    // at module.ae:947 and emits -Djava.library.path), exactly as it would
+    // for a rust cdylib — while `shared_lib` keeps the explicit name the
+    // ctypes/Fiddle/koffi bindings read for HTMLSANITIZER_LIB.
     build.publish_artifact(b, "shared_lib", "${dest}/libhtmlsanitizer.so")
+    build.publish_artifact(b, "ldlibdeps", "${dest}/libhtmlsanitizer.so")
+    build.publish_artifact(b, "shared_library_deps_including_transitive",
+                           "${dest}/libhtmlsanitizer.so")
     return 0
 }

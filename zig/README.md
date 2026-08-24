@@ -8,7 +8,15 @@ contains **no sanitizer logic**: every method marshals to an
 `aether_hs_embed_*` call across the C ABI described in `core/embed.ae`. One
 engine, one set of behaviours, N language surfaces.
 
-Requires **Zig 0.13.0**.
+Requires **Zig 0.16.0** or newer.
+
+> Ported from 0.13 in-place. Zig 0.16 changed five things this binding used:
+> `.name` in `build.zig.zon` is an enum literal (and `.fingerprint` is now
+> mandatory), `addTest`/`addExecutable` take a `.root_module` instead of flat
+> `.root_source_file`/`.target`/`.optimize` fields, the link surface
+> (`linkLibC`/`addRPath`/`linkSystemLibrary`) moved from the compile step onto
+> the module, `std.ArrayList` became unmanaged, and `callconv(.C)` is now
+> `callconv(.c)`. None of it touches the binding's logic.
 
 ## Building
 

@@ -98,8 +98,19 @@ fi
 
 # 2. the Clojure CLI. It manages its own classpath, so we hand it ours with
 #    -Scp and let it supply the runtime.
-if command -v clojure >/dev/null 2>&1 || command -v clj >/dev/null 2>&1; then
-    cli=$(command -v clojure 2>/dev/null || command -v clj)
+#    NB: "a binary named clojure is on PATH" is NOT enough. Debian ships a
+#    /usr/bin/clojure that is a DIFFERENT tool — it does not understand
+#    -Sdescribe/-Scp and dies with "-Scp (No such file or directory)", which
+#    reads as a test failure rather than a missing toolchain. Verify with
+#    -Sdescribe (cheap, read-only) before trusting it.
+cli=""
+for c in clojure clj; do
+    if command -v "$c" >/dev/null 2>&1 && "$c" -Sdescribe >/dev/null 2>&1; then
+        cli=$(command -v "$c")
+        break
+    fi
+done
+if [ -n "$cli" ]; then
     # JAVA_OPTS is how the CLI passes flags to the JVM it launches.
     JAVA_HOME=$(dirname "$(dirname "$RUN_JAVA")") \
     JAVA_OPTS="--enable-native-access=ALL-UNNAMED" \

@@ -160,7 +160,7 @@ RSpec.describe HtmlSanitizer do
   end
 
   it "sanitizes a whole document" do
-    expect(s.sanitize_document("<div>doc<script>x</script></div>")).to eq("<div>doc</div>")
+    expect(s.sanitize_document("<div>doc<script>x</script></div>")).to eq("<html><head></head><body><div>doc</div></body></html>")
   end
 
   it "honours allow_data_attributes" do

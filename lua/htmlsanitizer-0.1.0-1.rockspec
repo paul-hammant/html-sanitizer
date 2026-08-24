@@ -11,7 +11,7 @@ package = "htmlsanitizer"
 version = "0.1.0-1"
 
 source = {
-  url = "git+https://github.com/paulhammant/html-sanitizer.git",
+  url = "git+https://github.com/paul-hammant/html-sanitizer.git",
   dir = "html-sanitizer/lua",
 }
 
@@ -22,7 +22,7 @@ description = {
     engine (compiled from pure Aether). No sanitizer logic lives in Lua or in
     the extension — every call marshals to an aether_hs_embed_* symbol.
   ]],
-  homepage = "https://github.com/paulhammant/html-sanitizer",
+  homepage = "https://github.com/paul-hammant/html-sanitizer",
   license = "MIT",
 }
 

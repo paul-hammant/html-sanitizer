@@ -35,7 +35,7 @@ layout around it.
 ## Usage
 
 ```go
-import "github.com/paulhammant/html-sanitizer/go"
+import "github.com/paul-hammant/html-sanitizer/go"
 
 s, err := htmlsanitizer.New()
 if err != nil {

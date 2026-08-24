@@ -240,11 +240,11 @@ suite "surface":
 
   test "sanitize_document is wired":
     withSanitizer s:
-      check s.sanitizeDocument("<div>doc<script>x</script></div>") == "<div>doc</div>"
+      check s.sanitizeDocument("<div>doc<script>x</script></div>") == "<html><head></head><body><div>doc</div></body></html>"
 
   test "one-shot helpers":
     check sanitize("<div>a<script>b</script></div>") == "<div>a</div>"
-    check sanitizeDocument("<div>doc<script>x</script></div>") == "<div>doc</div>"
+    check sanitizeDocument("<div>doc<script>x</script></div>") == "<html><head></head><body><div>doc</div></body></html>"
 
   test "allow_data_attributes flag":
     withSanitizer s:

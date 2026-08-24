@@ -275,7 +275,7 @@ func TestClearingAHookRestoresDefaults(t *testing.T) {
 func TestSanitizeDocument(t *testing.T) {
 	s := newSanitizer(t)
 	eq(t, "sanitize_document", s.SanitizeDocument("<div>doc<script>x</script></div>", ""),
-		"<div>doc</div>")
+		"<html><head></head><body><div>doc</div></body></html>")
 }
 
 func TestAllowDataAttributes(t *testing.T) {

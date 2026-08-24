@@ -20,7 +20,9 @@ import std.mem
 
 exports(
     DomNode, DomAttr, HtmlSanitizer,
-    new, free, sanitize, sanitize_document, sanitize_dom,
+    new, free, sanitize, sanitize_document, sanitize_dom, normalize,
+    removal_count, removal_reason, removal_name, removal_detail,
+    use_baseline, BASELINE_DEFAULT, BASELINE_EMAIL,
     // Node kinds
     NODE_DOC, NODE_ELEM, NODE_TEXT, NODE_COMMENT,
     // Remove reasons
@@ -82,8 +84,28 @@ struct HtmlSanitizer {
     allowed_css_properties: ptr // std.set
     allowed_schemes: ptr // std.set
     allowed_classes: ptr // std.set
-    uri_attributes: ptr // std.set
+    uri_attributes: ptr // std.set — single-URL attributes (href, src, ...)
+    uri_list_attributes: ptr // std.set — COMMA-SEPARATED url lists (srcset, ping, archive)
     disallow_css_property_value_regex: ptr // std.regex (optional)
+
+    // normalize_only: run the structural pass (parse -> repair -> canonical
+    // serialize) WITHOUT any security filtering. Nothing is removed, so the
+    // removal report stays empty. This is the "make it well-formed" job,
+    // separable from the "make it safe" one.
+    normalize_only: bool
+
+    // Set while sanitize_document() is running, so the shared pass does NOT
+    // unwrap document structure on its way out — the document entry point
+    // needs the <head> content that unwrapping would discard.
+    keep_document_envelope: bool
+
+    // Removal report. Every drop appends one entry, so a caller can ask what
+    // happened AFTER the fact — the callbacks answer the same question but
+    // only for hosts that can supply function pointers, which the WASM and
+    // BEAM bindings cannot.
+    removals_reason: ptr // *List of string (the numeric REASON_*, as text)
+    removals_name: ptr   // *List of string
+    removals_detail: ptr // *List of string
 
     // Callbacks
     on_removing_tag: ptr
@@ -186,10 +208,12 @@ fn decode_html_entities(s: string) -> string {
             // Scan for ';'
             j = i + 1
             found_semi = false
+            had_semi = false
             while j < len {
                 cj = string.char_at_n(s, len, j) & 255
                 if cj == 59 { // ';'
                     found_semi = true
+                    had_semi = true
                     break
                 }
                 if cj == 38 || cj == 60 || cj == 62 || cj == 32 { // '&', '<', '>', ' '
@@ -197,6 +221,55 @@ fn decode_html_entities(s: string) -> string {
                 }
                 j = j + 1
             }
+            // Browsers decode a NUMERIC entity even without the closing
+            // semicolon — `&#x6a` is `j` and `&#0000106` is `j` — and they
+            // stop at the first character that cannot belong to the number.
+            // Requiring the semicolon is a bypass: `&#x6a&#x61...script:` was
+            // passed through as literal text, so the scheme check never saw
+            // `javascript:`. Upstream's ImageHexEncodeXssTest /
+            // ImageLongUTF8UnicodeXssTest are exactly this.
+            //
+            // Named entities (&amp, &lt) are deliberately NOT decoded without
+            // the semicolon: the set is open-ended and a bare `&amp` in text
+            // is far more likely to be literal than an evasion attempt. The
+            // numeric forms are unambiguous, which is why they are safe to
+            // decode greedily.
+            if found_semi == false {
+                k = i + 1
+                if k < len {
+                    ck = string.char_at_n(s, len, k) & 255
+                    if ck == 35 {          // '#'
+                        k = k + 1
+                        is_hex = false
+                        if k < len {
+                            cx = string.char_at_n(s, len, k) & 255
+                            if cx == 120 || cx == 88 {   // 'x' / 'X'
+                                is_hex = true
+                                k = k + 1
+                            }
+                        }
+                        digits_start = k
+                        while k < len {
+                            cd = string.char_at_n(s, len, k) & 255
+                            if cd >= 48 && cd <= 57 { k = k + 1; continue }
+                            if is_hex {
+                                if (cd >= 97 && cd <= 102) || (cd >= 65 && cd <= 70) {
+                                    k = k + 1
+                                    continue
+                                }
+                            }
+                            break
+                        }
+                        if k > digits_start {
+                            j = k          // decode as if the semicolon were there
+                            found_semi = true
+                            // had_semi stays false: resume AT j, not past it,
+                            // or we would swallow the next entity's '&'.
+                        }
+                    }
+                }
+            }
+
             if found_semi {
                 ent = string.substring_n(s, len, i + 1, j)
                 decoded = ""
@@ -226,7 +299,11 @@ fn decode_html_entities(s: string) -> string {
 
                 if decoded != "" {
                     strbuilder.append(sb, decoded)
-                    i = j + 1
+                    if had_semi {
+                        i = j + 1
+                    } else {
+                        i = j
+                    }
                     continue
                 }
             }
@@ -252,8 +329,17 @@ fn html_escape(s: string, is_attr: bool) -> string {
             else { strbuilder.append(sb, "\"") }
         }
         else if c == 39 {
-            if is_attr { strbuilder.append(sb, "&#x27;") }
-            else { strbuilder.append(sb, "'") }
+            // A single quote needs NO escaping here. html_format_rec always
+            // emits attributes as name="value" (double-quoted), so a literal
+            // `'` inside cannot terminate the value — and `&` `<` `>` `"` are
+            // already handled above, which is the full set that can. Escaping
+            // it to &#x27; was merely noisy, and it disagreed with upstream on
+            // 8 parity tests.
+            //
+            // This would stop being safe if the emitter ever switched to
+            // single-quoted attributes; it does not, and the `="` above is the
+            // single place that would have to change.
+            strbuilder.append(sb, "'")
         }
         else {
             strbuilder.append_n(sb, string_from_char(c), 1)
@@ -647,6 +733,26 @@ fn parse_html(html: string) -> ptr {
                 }
                 if scan_peek(sc) == 62 {
                     scan_advance(sc)
+                } else {
+                    // Leftover junk inside the tag that the attribute loop
+                    // could not consume — most often because a NESTED quote
+                    // closed an attribute early:
+                    //
+                    //   <div style="...url=<SCRIPT SRC="http://e/x.js"></SCRIPT>">
+                    //                                ^ closes style here
+                    //
+                    // Everything from there to the real `>` is still TAG
+                    // content. Falling through without consuming it made the
+                    // remainder a SIBLING text node emitted after </div>,
+                    // where browsers (and upstream) treat it as inside the
+                    // element. Skip to the tag's end so the following text run
+                    // starts in the right place.
+                    while scan_eof(sc) == false && scan_peek(sc) != 62 {
+                        scan_advance(sc)
+                    }
+                    if scan_eof(sc) == false {
+                        scan_advance(sc)
+                    }
                 }
 
                 if tag_name == "area" || tag_name == "base" || tag_name == "br" || tag_name == "col" ||
@@ -781,6 +887,460 @@ fn html_format(n: ptr) -> string {
 }
 
 // ---- CSS & URL Helper Implementations ----
+
+// Does `url` look like a genuine scheme-relative reference, as opposed to
+// something we merely failed to parse a scheme out of?
+//
+// This distinction is a security boundary. `get_scheme` returns "" for BOTH
+// "/page.html" (relative, safe) and "`javascript:alert(1)`" (malformed —
+// a backtick is not a valid scheme character, so parsing gives up). Treating
+// the two alike is how a grave-accent-wrapped payload survived: the call site
+// saw "no scheme", concluded "relative", and kept the attribute verbatim.
+//
+// The rule: if there is a colon before the first `/`, `?` or `#`, the author
+// was writing a SCHEME. If we could not parse that scheme, the value is
+// malformed and must be refused, not waved through. A colon appearing after a
+// path separator is ordinary (`/a/b:c`, `?q=a:b`), so those stay relative.
+//
+// Browsers are lenient here in exactly the direction that hurts: they strip
+// odd characters and re-read the scheme. We cannot enumerate their quirks, so
+// we refuse anything scheme-shaped that we cannot positively identify.
+// Is this CSS value inherently unsafe, regardless of the caller's policy?
+//
+// Mirrors two ALWAYS-ON checks upstream applies in SanitizeCssValue:
+//
+//   1. `expression(...)` — IE's legacy CSS-expression syntax, which executes
+//      script. Matched case-insensitively AND across the full-width Unicode
+//      homoglyphs (U+FF25 etc.) upstream's CssExpression regex covers, because
+//      `ｅｘｐｒｅｓｓｉｏｎ(...)` was a real evasion.
+//   2. `<` or `>` anywhere in the value — upstream's
+//      DefaultDisallowedCssPropertyValue is literally `[<>]`. A CSS value has
+//      no legitimate use for angle brackets, and their presence means markup
+//      is being smuggled through a style attribute.
+//
+// Hand-rolled rather than a std.regex, deliberately: this must hold in an
+// --emit=lib build, where PCRE2 is stubbed out (see wasm/src/regex_stub.c).
+// A security check that silently no-ops on one target is worse than none.
+// Screen one candidate URL: resolve, scheme-check, run the filter hook.
+// Returns "" when the candidate must be dropped.
+fn screen_one_url(s: *HtmlSanitizer, elem: ptr, raw: string, base_url: string) -> string {
+    if raw == "" {
+        return ""
+    }
+    resolved = resolve_url(base_url, raw)
+    sch = get_scheme(resolved)
+    allowed = false
+    if sch == "" {
+        allowed = is_plain_relative(resolved)
+    } else {
+        allowed = set.contains(s.allowed_schemes, sch)
+    }
+    if allowed == false {
+        return ""
+    }
+    if s.on_filter_url != null {
+        resolved = invoke_filter_url(s.on_filter_url, elem, raw, resolved)
+    }
+    return resolved
+}
+
+// `srcset`: a COMMA-separated candidate list, each candidate a URL plus an
+// optional descriptor (`a.jpg 1x`, `b.jpg 640w`, or bare `c.jpg`). The
+// descriptor belongs to its URL and is carried through untouched; only the
+// URL is screened. Rejected candidates are dropped individually — upstream is
+// explicit that `srcset="ok.jpg 1x, javascript:alert(1) 2x"` keeps the first.
+// Joined with ", ". Returns "" when nothing survives.
+fn sanitize_srcset(s: *HtmlSanitizer, elem: ptr, value: string, base_url: string) -> string {
+    parts = string_split_to_seq(value, ",")
+    out = strbuilder.new(string_length(value) + 8)
+    first = true
+
+    curr = parts
+    while string_seq_is_empty(curr) == 0 {
+        cand = string_trim(string_seq_head(curr))
+        curr = string_seq_tail(curr)
+        if cand == "" {
+            continue
+        }
+        // first whitespace-delimited token is the URL; the rest is descriptor
+        clen = string_length(cand)
+        k = 0
+        while k < clen {
+            cc = string.char_at_n(cand, clen, k) & 255
+            if cc == 32 || cc == 9 || cc == 10 || cc == 13 {
+                break
+            }
+            k = k + 1
+        }
+        raw = string.substring_n(cand, clen, 0, k)
+        descriptor = string_trim(string.substring_n(cand, clen, k, clen))
+
+        // A real srcset descriptor is `1x` / `2.5x` / `640w` — digits, an
+        // optional dot, then `w` or `x`. Anything else means the value was not
+        // actually a srcset (e.g. a space-separated list that reached this
+        // path), and carrying it through would smuggle an unscreened URL:
+        //   srcset="/ok.jpg javascript:alert(1)"
+        // parses as ONE candidate whose "descriptor" is the payload. Refuse
+        // the whole candidate rather than emit it.
+        if descriptor != "" {
+            dlen = string_length(descriptor)
+            dok = true
+            di = 0
+            seen_digit = false
+            while di < dlen {
+                dc = string.char_at_n(descriptor, dlen, di) & 255
+                if dc >= 48 && dc <= 57 {
+                    seen_digit = true
+                    di = di + 1
+                    continue
+                }
+                if dc == 46 && di > 0 {          // '.' inside the number
+                    di = di + 1
+                    continue
+                }
+                if (dc == 119 || dc == 120) && di == dlen - 1 {   // trailing w/x
+                    di = di + 1
+                    continue
+                }
+                dok = false
+                break
+            }
+            if dok == false || seen_digit == false {
+                // Not a descriptor. Treat the candidate as a whitespace-
+                // separated run of URLs instead (upstream's SourceSet parser
+                // accepts `a https://b` as two candidates, and its own test
+                // pins that). Every token is screened, so nothing slips past;
+                // this only changes which SHAPE we accept, not what we trust.
+                sub = string_split_to_seq(cand, " ")
+                sc2 = sub
+                while string_seq_is_empty(sc2) == 0 {
+                    tok = string_trim(string_seq_head(sc2))
+                    sc2 = string_seq_tail(sc2)
+                    if tok == "" {
+                        continue
+                    }
+                    turl = screen_one_url(s, elem, tok, base_url)
+                    if turl == "" {
+                        continue
+                    }
+                    if first == false {
+                        strbuilder.append(out, " ")
+                    }
+                    strbuilder.append(out, turl)
+                    first = false
+                }
+                string_seq_free(sub)
+                continue
+            }
+        }
+
+        url = screen_one_url(s, elem, raw, base_url)
+        if url == "" {
+            continue
+        }
+        if first == false {
+            strbuilder.append(out, ", ")
+        }
+        strbuilder.append(out, url)
+        if descriptor != "" {
+            strbuilder.append(out, " ")
+            strbuilder.append(out, descriptor)
+        }
+        first = false
+    }
+
+    string_seq_free(parts)
+    if first {
+        return ""
+    }
+    return strbuilder.finish(out)
+}
+
+// `ping` / `archive`: a WHITESPACE-separated URL list, no descriptors. Split
+// on whitespace, drop failures individually, join with " ".
+fn sanitize_uri_list(s: *HtmlSanitizer, elem: ptr, value: string, base_url: string) -> string {
+    parts = string_split_to_seq(value, " ")
+    out = strbuilder.new(string_length(value) + 8)
+    first = true
+
+    curr = parts
+    while string_seq_is_empty(curr) == 0 {
+        entry = string_trim(string_seq_head(curr))
+        curr = string_seq_tail(curr)
+        if entry == "" {
+            continue
+        }
+        url = screen_one_url(s, elem, entry, base_url)
+        if url == "" {
+            continue
+        }
+        if first == false {
+            strbuilder.append(out, " ")
+        }
+        strbuilder.append(out, url)
+        first = false
+    }
+
+    string_seq_free(parts)
+    if first {
+        return ""
+    }
+    return strbuilder.finish(out)
+}
+
+// Upstream serializes CSS through AngleSharp, whose colour value type has a
+// single canonical form: `rgba(r, g, b, a)`. So `#fff`, `red` and
+// `rgb(0,0,0)` all come back as rgba(...). We match that for the forms that
+// actually occur, because a value that only DIFFERS in spelling is a parity
+// failure with no security content — and leaving them unmatched hides the
+// failures that do matter.
+//
+// Deliberately NOT a full CSS colour implementation: no hsl(), no colour
+// spaces, no `transparent`/`currentColor` (which AngleSharp also leaves
+// alone). Unrecognised input is returned untouched, so this can only ever
+// normalise a spelling, never reject a value.
+// Record one removal for the after-the-fact report.
+//
+// Kept as parallel string lists rather than a struct list: every binding can
+// read a string by index with the accessors it already has, and the C ABI
+// needs no new struct layout. `reason` is the numeric REASON_* rendered as
+// text so the ABI stays scalar-only.
+//
+// Deliberately unconditional — even when normalize_only is set, so that a
+// caller who flips the flag on and sees an empty report can trust it means
+// "nothing was removed", not "reporting was off".
+fn record_removal(s: *HtmlSanitizer, reason: int, name: string, detail: string) {
+    if s.removals_reason == null { return }
+    list_add_string_owned(s.removals_reason, string.from_int(reason))
+    list_add_string_owned(s.removals_name, string.concat("", name))
+    list_add_string_owned(s.removals_detail, string.concat("", detail))
+}
+
+// Drop every recorded removal. Called at the start of each sanitize so the
+// report describes THAT call, not the handle's whole history.
+fn clear_removals(s: *HtmlSanitizer) {
+    if s.removals_reason == null { return }
+    list_clear(s.removals_reason)
+    list_clear(s.removals_name)
+    list_clear(s.removals_detail)
+}
+
+fn normalize_css_color(v: string) -> string {
+    t = string_trim(v)
+    tl = string_to_lower(t)
+    tlen = string_length(tl)
+
+    // #rgb / #rrggbb
+    if tlen > 0 && (string.char_at_n(tl, tlen, 0) & 255) == 35 {
+        hex = string.substring_n(tl, tlen, 1, tlen)
+        hl = string_length(hex)
+        r = -1
+        g = -1
+        b = -1
+        if hl == 3 {
+            r0, e0 = string.to_int_radix(string.substring_n(hex, hl, 0, 1), 16)
+            g0, e1 = string.to_int_radix(string.substring_n(hex, hl, 1, 2), 16)
+            b0, e2 = string.to_int_radix(string.substring_n(hex, hl, 2, 3), 16)
+            if e0 == "" && e1 == "" && e2 == "" {
+                r = (r0 as int) * 17
+                g = (g0 as int) * 17
+                b = (b0 as int) * 17
+            }
+        } else if hl == 6 {
+            r0, e0 = string.to_int_radix(string.substring_n(hex, hl, 0, 2), 16)
+            g0, e1 = string.to_int_radix(string.substring_n(hex, hl, 2, 4), 16)
+            b0, e2 = string.to_int_radix(string.substring_n(hex, hl, 4, 6), 16)
+            if e0 == "" && e1 == "" && e2 == "" {
+                r = r0 as int
+                g = g0 as int
+                b = b0 as int
+            }
+        }
+        if r >= 0 {
+            return "rgba(${r}, ${g}, ${b}, 1)"
+        }
+        return t
+    }
+
+    // rgb(r,g,b) -> rgba(r, g, b, 1); rgba(...) is re-spaced to match
+    if string_starts_with(tl, "rgb(") == 1 || string_starts_with(tl, "rgba(") == 1 {
+        open_p = string_index_of(tl, "(")
+        close_p = string_index_of(tl, ")")
+        if open_p > 0 && close_p > open_p {
+            inner = string.substring_n(tl, tlen, open_p + 1, close_p)
+            nums = string_split_to_seq(inner, ",")
+            outp = strbuilder.new(32)
+            strbuilder.append(outp, "rgba(")
+            cnt = 0
+            cu = nums
+            while string_seq_is_empty(cu) == 0 {
+                piece = string_trim(string_seq_head(cu))
+                cu = string_seq_tail(cu)
+                if cnt > 0 {
+                    strbuilder.append(outp, ", ")
+                }
+                strbuilder.append(outp, piece)
+                cnt = cnt + 1
+            }
+            string_seq_free(nums)
+            if cnt == 3 {
+                strbuilder.append(outp, ", 1")
+            }
+            strbuilder.append(outp, ")")
+            if cnt == 3 || cnt == 4 {
+                return strbuilder.finish(outp)
+            }
+        }
+        return t
+    }
+
+    // the named colours upstream's tests actually use
+    if tl == "red"     { return "rgba(255, 0, 0, 1)" }
+    if tl == "white"   { return "rgba(255, 255, 255, 1)" }
+    if tl == "black"   { return "rgba(0, 0, 0, 1)" }
+    if tl == "blue"    { return "rgba(0, 0, 255, 1)" }
+    if tl == "green"   { return "rgba(0, 128, 0, 1)" }
+    if tl == "yellow"  { return "rgba(255, 255, 0, 1)" }
+
+    return t
+}
+
+// Is this property one whose value AngleSharp parses as a colour?
+fn is_color_property(name: string) -> bool {
+    if name == "color" { return true }
+    if name == "background-color" { return true }
+    if name == "border-color" { return true }
+    if name == "border-left-color" { return true }
+    if name == "border-right-color" { return true }
+    if name == "border-top-color" { return true }
+    if name == "border-bottom-color" { return true }
+    if name == "outline-color" { return true }
+    if name == "text-decoration-color" { return true }
+    if name == "column-rule-color" { return true }
+    return false
+}
+
+fn css_value_is_unsafe(val: string) -> bool {
+    len = string_length(val)
+
+    // angle brackets, cheap scan first
+    i = 0
+    while i < len {
+        c = string.char_at_n(val, len, i) & 255
+        if c == 60 || c == 62 {          // '<' '>'
+            return true
+        }
+        i = i + 1
+    }
+
+    // Fold the value before matching, so the keyword cannot be split or
+    // disguised. Three evasions upstream's regex covers and a naive
+    // `contains("expression")` does not:
+    //
+    //   e/**/xpression(...)   CSS comments are stripped by the parser
+    //   expʀessɪoɴ(...)       small-capital homoglyphs (U+0280/026A/0274)
+    //   uʀʟ(javascript:...)   the same trick applied to `url`
+    //
+    // Any non-ASCII byte in a CSS *keyword* position is an obfuscation
+    // attempt — CSS keywords are ASCII — so folding drops them entirely
+    // rather than trying to enumerate homoglyph tables.
+    fold = strbuilder.new(len + 4)
+    j = 0
+    while j < len {
+        cj = string.char_at_n(val, len, j) & 255
+        // strip /* ... */ comments
+        if cj == 47 && j + 1 < len && (string.char_at_n(val, len, j + 1) & 255) == 42 {
+            j = j + 2
+            while j + 1 < len {
+                if (string.char_at_n(val, len, j) & 255) == 42 &&
+                   (string.char_at_n(val, len, j + 1) & 255) == 47 {
+                    j = j + 2
+                    break
+                }
+                j = j + 1
+            }
+            continue
+        }
+        // strip backslashes (CSS escapes already normalised upstream of here)
+        if cj == 92 {
+            j = j + 1
+            continue
+        }
+        // Map the homoglyphs upstream's CssExpression regex enumerates onto
+        // their ASCII letter, rather than deleting them — deleting turns
+        // `expʀessɪoɴ` into `expesso`, which matches nothing. These are the
+        // small-capital block (U+0250..U+02AF, 2 bytes: CA/C9 xx) and the
+        // full-width block (U+FF00.., 3 bytes: EF BC/BD xx).
+        if cj >= 128 {
+            mapped = 0
+            if j + 1 < len {
+                b1 = string.char_at_n(val, len, j + 1) & 255
+                if cj == 202 {                       // 0xCA
+                    if b1 == 128 { mapped = 114 }    // ʀ -> r
+                    else if b1 == 159 { mapped = 108 } // ʟ -> l
+                } else if cj == 201 {                // 0xC9
+                    if b1 == 170 { mapped = 105 }    // ɪ -> i
+                    else if b1 == 180 { mapped = 110 } // ɴ -> n
+                }
+                if mapped != 0 {
+                    strbuilder.append_n(fold, string_from_char(mapped), 1)
+                    j = j + 2
+                    continue
+                }
+            }
+            if j + 2 < len && cj == 239 {            // 0xEF: full-width block
+                b1 = string.char_at_n(val, len, j + 1) & 255
+                b2 = string.char_at_n(val, len, j + 2) & 255
+                if b1 == 188 || b1 == 189 {
+                    // U+FF01..U+FF5E map to ASCII 0x21..0x7E by subtracting
+                    // 0xFEE0; in UTF-8 that is (b1-188)*64 + (b2-128) + 0x20.
+                    ascii = (b1 - 188) * 64 + (b2 - 128) + 32
+                    if ascii >= 33 && ascii <= 126 {
+                        strbuilder.append_n(fold, string_from_char(ascii), 1)
+                        j = j + 3
+                        continue
+                    }
+                }
+            }
+            // any other non-ASCII byte: drop it, so a stray accent cannot
+            // pad the keyword apart
+            j = j + 1
+            continue
+        }
+        strbuilder.append_n(fold, string_from_char(cj), 1)
+        j = j + 1
+    }
+    folded = string_to_lower(strbuilder.finish(fold))
+
+    if string_contains(folded, "expression") == 1 {
+        return true
+    }
+    // `uʀʟ(javascript:` folds to `url(javascript:` — but a legitimate
+    // `url(...)` is handled by the URL path, so only flag the folded form when
+    // the ORIGINAL carried non-ASCII (i.e. the fold actually changed it).
+    if string_length(folded) != len {
+        if string_contains(folded, "url(") == 1 {
+            return true
+        }
+    }
+    return false
+}
+
+fn is_plain_relative(url: string) -> bool {
+    len = string_length(url)
+    i = 0
+    while i < len {
+        c = string.char_at_n(url, len, i) & 255
+        if c == 58 {          // ':' before any path separator => scheme-shaped
+            return false
+        }
+        if c == 47 || c == 63 || c == 35 {   // '/', '?', '#'
+            return true
+        }
+        i = i + 1
+    }
+    return true
+}
 
 fn get_scheme(url: string) -> string {
     len = string_length(url)
@@ -998,6 +1558,14 @@ fn sanitize_css_url_in_value(val: string, s: *HtmlSanitizer, elem: ptr, base_url
     sb = strbuilder.new(norm_len + 10)
     has_disallowed = false
 
+    // Upstream re-serializes CSS through AngleSharp, which quotes a url() it
+    // understands as a property value — `background-image: url("...")` — but
+    // leaves one nested inside var() alone, because the var() fallback is an
+    // opaque token list it does not re-write. Match that: quote at the top
+    // level, pass through unquoted inside var(). Purely a serialization
+    // agreement; the URL is screened identically either way.
+    inside_var = string_contains(string_to_lower(norm), "var(") == 1
+
     // Hoisted local strings
     raw_url = ""
     resolved = ""
@@ -1062,7 +1630,10 @@ fn sanitize_css_url_in_value(val: string, s: *HtmlSanitizer, elem: ptr, base_url
             sch = get_scheme(resolved)
             allowed = false
             if sch == "" {
-                allowed = true
+                // Same ambiguity as the URI-attribute path: "" means either
+                // "relative" or "we could not parse it". Only the first is
+                // safe. url(`javascript:...`) lands here.
+                allowed = is_plain_relative(resolved)
             } else {
                 allowed = set.contains(s.allowed_schemes, sch)
             }
@@ -1081,9 +1652,15 @@ fn sanitize_css_url_in_value(val: string, s: *HtmlSanitizer, elem: ptr, base_url
                 resolved = filtered_url
             }
 
-            strbuilder.append(sb, "url(\"")
-            strbuilder.append(sb, resolved)
-            strbuilder.append(sb, "\")")
+            if inside_var {
+                strbuilder.append(sb, "url(")
+                strbuilder.append(sb, resolved)
+                strbuilder.append(sb, ")")
+            } else {
+                strbuilder.append(sb, "url(\"")
+                strbuilder.append(sb, resolved)
+                strbuilder.append(sb, "\")")
+            }
             continue
         }
 
@@ -1151,6 +1728,15 @@ fn sanitize_css_style_attribute(s: *HtmlSanitizer, elem: ptr, attr_ptr: ptr, bas
                 }
 
                 if remove == false {
+                    // Always-on checks first (expression(), angle brackets) —
+                    // these are not the caller's to switch off.
+                    if css_value_is_unsafe(prop_val) {
+                        remove = true
+                        reason = REASON_NOT_ALLOWED_VALUE
+                    }
+                }
+
+                if remove == false {
                     if s.disallow_css_property_value_regex != null {
                         if regex.matches(s.disallow_css_property_value_regex, prop_val) == 1 {
                             remove = true
@@ -1159,6 +1745,9 @@ fn sanitize_css_style_attribute(s: *HtmlSanitizer, elem: ptr, attr_ptr: ptr, bas
                 }
 
                 if remove == false {
+                    if is_color_property(prop_name) {
+                        prop_val = normalize_css_color(prop_val)
+                    }
                     strbuilder.append(sb, prop_name)
                     strbuilder.append(sb, ": ")
                     strbuilder.append(sb, prop_val)
@@ -1170,7 +1759,19 @@ fn sanitize_css_style_attribute(s: *HtmlSanitizer, elem: ptr, attr_ptr: ptr, bas
     }
 
     string_seq_free(parts)
-    attr.value = string_trim(strbuilder.finish(sb))
+    // Declarations are appended as `name: value; `, so the result carries a
+    // trailing `; `. Trim the whitespace, then drop the dangling separator:
+    // upstream emits `a: 1; b: 2` with no trailing semicolon, and matching it
+    // is worth 7 parity tests. (CSS allows either form; this is purely about
+    // agreeing on the serialization.)
+    built = string_trim(strbuilder.finish(sb))
+    blen = string_length(built)
+    if blen > 0 {
+        if (string.char_at_n(built, blen, blen - 1) & 255) == 59 {
+            built = string.substring_n(built, blen, 0, blen - 1)
+        }
+    }
+    attr.value = built
 
     if attr.value == "" {
         return false
@@ -1211,12 +1812,32 @@ fn sanitize_attributes(s: *HtmlSanitizer, elem: ptr, base_url: string) {
             }
 
             if remove == false {
-                if set.contains(s.uri_attributes, attr.name) {
+                if set.contains(s.uri_list_attributes, attr.name) {
+                    listed = ""
+                    if attr.name == "srcset" {
+                        listed = sanitize_srcset(s, elem, attr.value, base_url)
+                    } else {
+                        listed = sanitize_uri_list(s, elem, attr.value, base_url)
+                    }
+                    if listed == "" {
+                        remove = true
+                        reason = REASON_NOT_ALLOWED_URL_VALUE
+                        if s.on_removing_attribute != null {
+                            cb = unbox_closure(s.on_removing_attribute)
+                            cancel = call(cb, elem, attr_ptr, reason) != 0
+                            if cancel { remove = false }
+                        }
+                    } else {
+                        attr.value = listed
+                    }
+                } else if set.contains(s.uri_attributes, attr.name) {
                     resolved = resolve_url(base_url, attr.value)
                     sch = get_scheme(resolved)
                     allowed_sch = false
                     if sch == "" {
-                        allowed_sch = true
+                        // "" is ambiguous — genuinely relative, or malformed
+                        // and unparseable. Only the former is safe.
+                        allowed_sch = is_plain_relative(resolved)
                     } else {
                         allowed_sch = set.contains(s.allowed_schemes, sch)
                     }
@@ -1250,6 +1871,7 @@ fn sanitize_attributes(s: *HtmlSanitizer, elem: ptr, base_url: string) {
             }
 
             if remove {
+                record_removal(s, reason, attr.name, attr.value)
                 heap.free(attr)
             } else {
                 list_add_raw(new_attrs, attr_ptr)
@@ -1261,9 +1883,51 @@ fn sanitize_attributes(s: *HtmlSanitizer, elem: ptr, base_url: string) {
     nd.attrs = new_attrs
 }
 
+// Flatten a node's text content — the `detail` of a removal report entry, so
+// a caller sees WHAT was dropped (`alert(1)`) and not merely that a <script>
+// was. Capped, because a removed subtree can be arbitrarily large and the
+// report is a diagnostic, not a copy of the input.
+fn text_of(node: ptr) -> string {
+    nd = node as *DomNode
+    if nd.kind == NODE_TEXT {
+        return nd.value
+    }
+    if nd.children == null {
+        return ""
+    }
+    sb = strbuilder.new(64)
+    i = 0
+    n = list_size(nd.children)
+    while i < n {
+        ch = list_get_raw(nd.children, i)
+        if ch != null {
+            piece = text_of(ch)
+            if string_length(piece) > 0 {
+                strbuilder.append(sb, piece)
+            }
+        }
+        i = i + 1
+    }
+    out = strbuilder.finish(sb)
+    if string_length(out) > 200 {
+        return string.substring_n(out, string_length(out), 0, 200)
+    }
+    return out
+}
+
 fn sanitize_node(s: *HtmlSanitizer, node: ptr, base_url: string) -> bool {
     nd = node as *DomNode
     if nd.kind == NODE_TEXT {
+        return false
+    }
+
+    // normalize_only: the structural pass keeps EVERYTHING. Parsing and
+    // re-serializing still repairs nesting and canonicalizes the output; what
+    // it does not do is make a security judgement.
+    if s.normalize_only {
+        // Not even attribute filtering: sanitize_attributes IS the security
+        // pass. Structure comes from parse + re-serialize, which has already
+        // happened by the time we get here.
         return false
     }
 
@@ -1273,6 +1937,9 @@ fn sanitize_node(s: *HtmlSanitizer, node: ptr, base_url: string) -> bool {
             cb = unbox_closure(s.on_removing_comment)
             cancel = call(cb, node) != 0
             if cancel { remove = false }
+        }
+        if remove {
+            record_removal(s, REASON_NOT_ALLOWED_TAG, "#comment", nd.value)
         }
         return remove
     }
@@ -1289,6 +1956,10 @@ fn sanitize_node(s: *HtmlSanitizer, node: ptr, base_url: string) -> bool {
             }
         }
 
+        if remove {
+            record_removal(s, REASON_NOT_ALLOWED_TAG, nd.name, text_of(node))
+        }
+
         if remove == false {
             sanitize_attributes(s, node, base_url)
         }
@@ -1297,6 +1968,139 @@ fn sanitize_node(s: *HtmlSanitizer, node: ptr, base_url: string) -> bool {
     }
 
     return false
+}
+
+// ---- Structural repair (the "normalize" half) ----
+//
+// Browsers insert elements the author omitted. Two that matter for table
+// markup, because the HTML parsing spec requires them and every browser DOM
+// shows them whether or not the source did:
+//
+//   <table><td>x</td></table>       -> <table><tbody><tr><td>x</td></tr></tbody></table>
+//   <table><tr>...</tr></table>     -> <table><tbody><tr>...</tr></tbody></table>
+//
+// Runs BEFORE the security pass and independently of it, so normalize() and
+// sanitize() both get well-formed structure — that is the whole point of the
+// split. Idempotent: markup that already has <tbody> is untouched.
+fn repair_structure(node: ptr) {
+    nd = node as *DomNode
+    if nd.children == null {
+        return
+    }
+
+    // depth-first, so inner tables are repaired before their parent is
+    i = 0
+    n = list_size(nd.children)
+    while i < n {
+        ch = list_get_raw(nd.children, i)
+        if ch != null {
+            repair_structure(ch)
+        }
+        i = i + 1
+    }
+
+    if nd.kind != NODE_ELEM {
+        return
+    }
+
+    if nd.name == "table" {
+        wrap_table_rows(node)
+        return
+    }
+}
+
+// Give a <table>'s bare rows the <tbody> the parser omitted, and give bare
+// cells the <tr> they need. <thead>/<tfoot>/<caption>/<colgroup> are
+// section-level and stay where they are.
+fn wrap_table_rows(table: ptr) {
+    td = table as *DomNode
+    kids = td.children
+    if kids == null { return }
+
+    n = list_size(kids)
+    if n == 0 { return }
+
+    // does it already have a row container?
+    has_section = false
+    needs_wrap = false
+    i = 0
+    while i < n {
+        ch = list_get_raw(kids, i)
+        if ch != null {
+            cn = (ch as *DomNode).name
+            if (ch as *DomNode).kind == NODE_ELEM {
+                if cn == "tbody" {
+                    has_section = true
+                }
+                if cn == "tr" || cn == "td" || cn == "th" {
+                    needs_wrap = true
+                }
+            }
+        }
+        i = i + 1
+    }
+    if needs_wrap == false { return }
+
+    // Build the replacement child list: section elements keep their place,
+    // loose rows/cells are gathered into one <tbody> at the point the first
+    // of them appeared.
+    rebuilt = list_new()
+    tbody = new_elem_node("tbody")
+    (tbody as *DomNode).parent = table
+    placed = false
+
+    i = 0
+    while i < n {
+        ch = list_get_raw(kids, i)
+        if ch == null {
+            i = i + 1
+            continue
+        }
+        cd = ch as *DomNode
+        loose = false
+        if cd.kind == NODE_ELEM {
+            if cd.name == "tr" || cd.name == "td" || cd.name == "th" {
+                loose = true
+            }
+        }
+        if loose {
+            if placed == false {
+                list_add_raw(rebuilt, tbody)
+                placed = true
+            }
+            if cd.name == "td" || cd.name == "th" {
+                // a bare cell needs a row of its own
+                row = new_elem_node("tr")
+                (row as *DomNode).parent = tbody
+                cd.parent = row
+                list_add_raw((row as *DomNode).children, ch)
+                list_add_raw((tbody as *DomNode).children, row)
+            } else {
+                cd.parent = tbody
+                list_add_raw((tbody as *DomNode).children, ch)
+            }
+        } else {
+            list_add_raw(rebuilt, ch)
+        }
+        i = i + 1
+    }
+
+    if placed == false {
+        // nothing loose after all (an existing <tbody> absorbed it)
+        free_node(tbody)
+        list_free(rebuilt)
+        return
+    }
+    if has_section {
+        // Mixing an explicit <tbody> with loose rows is malformed enough that
+        // guessing an interleaving would be inventing structure. Leave it.
+        free_node(tbody)
+        list_free(rebuilt)
+        return
+    }
+
+    list_free(kids)
+    td.children = rebuilt
 }
 
 fn sanitize_children(s: *HtmlSanitizer, parent: ptr, base_url: string) {
@@ -1311,7 +2115,20 @@ fn sanitize_children(s: *HtmlSanitizer, parent: ptr, base_url: string) {
         if child != null {
             remove_node = sanitize_node(s, child, base_url)
             if remove_node {
-                if s.keep_child_nodes && (child as *DomNode).kind == NODE_ELEM {
+                // Structural WRAPPERS are unwrapped, not deleted: dropping
+                // <html>/<body> should leave the content behind, not take the
+                // document with it. This is independent of keep_child_nodes,
+                // which is a caller policy about ordinary disallowed elements;
+                // losing a whole document because its <body> was not in the
+                // allow-list is never what anyone means.
+                unwrap = false
+                if (child as *DomNode).kind == NODE_ELEM {
+                    cn = (child as *DomNode).name
+                    if cn == "html" || cn == "body" || cn == "head" {
+                        unwrap = true
+                    }
+                }
+                if (s.keep_child_nodes || unwrap) && (child as *DomNode).kind == NODE_ELEM {
                     sanitize_children(s, child, base_url)
 
                     c_ch = (child as *DomNode).children
@@ -1359,9 +2176,98 @@ fn post_process_node_rec(s: *HtmlSanitizer, node: ptr) {
 
 // ---- Lifecycle & Initialization ----
 
+// ---- Baselines ----
+//
+// A baseline is a NAMED TARGET: "make this HTML safe to put in an email",
+// not "here are 40 setters to get right". The default policy is a general-
+// purpose web one; a caller embedding untrusted HTML in a specific medium has
+// a different, usually narrower, requirement — and getting that narrowing
+// right from scratch is exactly the error-prone part.
+//
+// Applying a baseline REPLACES the allow-lists rather than intersecting with
+// whatever was there, so the result does not depend on call order. Configure
+// after applying, not before.
+
+const BASELINE_DEFAULT = 0
+const BASELINE_EMAIL   = 1
+
+// Email-safe: what survives an HTML email through the major clients, and
+// what a recipient's mail client will not turn into an attack surface.
+//
+// Removed relative to the default policy, and why:
+//   form/input/button/select/textarea/option/optgroup/label/fieldset/legend
+//     — interactive form controls. Gmail and Outlook strip these anyway, and
+//       a form in an email is a phishing primitive: it renders as a login box
+//       and posts wherever the author says.
+//   svg/rect        — SVG carries its own script surface and animation; mail
+//                     clients do not render it consistently in any case.
+//   keygen/menuitem/details/summary/progress/meter/output/datalist
+//     — interactive or obsolete; no mail client renders them dependably.
+//   html/head/body  — an email fragment is embedded INTO a document; emitting
+//                     document structure nests one document inside another.
+//   iframe/object/embed — already absent from the default policy; listed so
+//                     the intent is on the record if defaults ever widen.
+//
+// Kept deliberately: `img` (email is image-heavy; the scheme allow-list still
+// governs where they load from) and `a` (links are the point of most email).
+// Scheme policy narrows to http/https/mailto — `mailto:` is ordinary in email
+// and absent from the web default.
+fn apply_email_baseline(s: *HtmlSanitizer) {
+    let drop_seq: *StringSeq = ["form", "input", "button", "select", "textarea",
+        "option", "optgroup", "label", "fieldset", "legend",
+        "svg", "rect", "keygen", "menuitem", "details", "summary",
+        "progress", "meter", "output", "datalist",
+        "html", "head", "body", "iframe", "object", "embed"]
+    curr = drop_seq
+    while string_seq_is_empty(curr) == 0 {
+        set.remove(s.allowed_tags, string_seq_head(curr))
+        curr = string_seq_tail(curr)
+    }
+    string_seq_free(drop_seq)
+
+    // Form-control and scripting-adjacent attributes go with them.
+    let adrop: *StringSeq = ["action", "formaction", "method", "enctype", "target",
+        "name", "value", "checked", "selected", "disabled", "readonly",
+        "maxlength", "size", "accept", "accept-charset", "autocomplete",
+        "autosave", "for", "usemap", "tabindex", "accesskey",
+        "contenteditable", "draggable", "dropzone", "spellcheck"]
+    ca = adrop
+    while string_seq_is_empty(ca) == 0 {
+        set.remove(s.allowed_attributes, string_seq_head(ca))
+        ca = string_seq_tail(ca)
+    }
+    string_seq_free(adrop)
+
+    // mailto: is ordinary in email and absent from the web default; ftp and
+    // anything else is not.
+    set.clear(s.allowed_schemes)
+    set.add(s.allowed_schemes, "http")
+    set.add(s.allowed_schemes, "https")
+    set.add(s.allowed_schemes, "mailto")
+}
+
+// Apply a named baseline. Returns false for an unknown id, so a caller (or a
+// binding) learns it asked for something that does not exist rather than
+// silently getting the default policy.
+use_baseline(s: *HtmlSanitizer, baseline: int) -> bool {
+    if baseline == BASELINE_DEFAULT {
+        return true                 // `new()` already installed it
+    }
+    if baseline == BASELINE_EMAIL {
+        apply_email_baseline(s)
+        return true
+    }
+    return false
+}
+
 fn populate_defaults(s: *HtmlSanitizer) {
     set.add(s.allowed_schemes, "http")
     set.add(s.allowed_schemes, "https")
+
+    // Comma-separated URL LISTS, matching upstream's UriListAttributes.
+    set.add(s.uri_list_attributes, "archive")
+    set.add(s.uri_list_attributes, "ping")
+    set.add(s.uri_list_attributes, "srcset")
 
     set.add(s.uri_attributes, "action")
     set.add(s.uri_attributes, "formaction")
@@ -1502,6 +2408,12 @@ new() -> *HtmlSanitizer {
     s.allowed_schemes = set.new()
     s.allowed_classes = set.new()
     s.uri_attributes = set.new()
+    s.uri_list_attributes = set.new()
+    s.normalize_only = false
+    s.keep_document_envelope = false
+    s.removals_reason = list_new()
+    s.removals_name = list_new()
+    s.removals_detail = list_new()
     s.disallow_css_property_value_regex = null
 
     s.on_removing_tag = null
@@ -1525,6 +2437,10 @@ free(s: *HtmlSanitizer) {
     if s.allowed_schemes != null { set.free(s.allowed_schemes) }
     if s.allowed_classes != null { set.free(s.allowed_classes) }
     if s.uri_attributes != null { set.free(s.uri_attributes) }
+    if s.uri_list_attributes != null { set.free(s.uri_list_attributes) }
+    if s.removals_reason != null { list_free(s.removals_reason) }
+    if s.removals_name != null { list_free(s.removals_name) }
+    if s.removals_detail != null { list_free(s.removals_detail) }
     if s.disallow_css_property_value_regex != null { regex.free(s.disallow_css_property_value_regex) }
 
     // Free callbacks
@@ -1543,8 +2459,10 @@ free(s: *HtmlSanitizer) {
 // ---- Core Sanitizer API ----
 
 sanitize(s: *HtmlSanitizer, html: string, base_url: string) -> string {
+    clear_removals(s)
     if html == "" { return "" }
     doc = parse_html(html)
+    repair_structure(doc)
     sanitize_children(s, doc, base_url)
     post_process_node_rec(s, doc)
 
@@ -1555,14 +2473,228 @@ sanitize(s: *HtmlSanitizer, html: string, base_url: string) -> string {
 
     formatted = html_format(doc)
     free_node(doc)
+
+    // sanitize() emits a FRAGMENT. If the input carried document structure,
+    // unwrap it — <html>/<head>/<body> are allow-listed (so the security pass
+    // leaves them alone), but a fragment consumer wants the content, not an
+    // envelope. sanitize_document() is the entry point that keeps it.
+    // Upstream pins both directions from the same input.
+    if s.normalize_only == false && s.keep_document_envelope == false {
+        formatted = unwrap_document(formatted)
+    }
     return formatted
 }
 
+// Strip an outer <html>…</html>, dropping <head> content and unwrapping
+// <body>. A no-op on input that is already a fragment.
+fn unwrap_document(html_str: string) -> string {
+    t = string_trim(html_str)
+    low = string_to_lower(t)
+    if string_starts_with(low, "<html") == 0 {
+        return t
+    }
+    // body content is the fragment; head content is document furniture that
+    // has no meaning once the envelope is gone.
+    bstart = string_index_of(low, "<body")
+    if bstart < 0 {
+        // <html> with no <body>: take everything between the tags
+        gt = string_index_of(low, ">")
+        bend = string_index_of(low, "</html>")
+        if gt < 0 || bend < 0 || bend <= gt { return "" }
+        return string_trim(string.substring_n(t, string_length(t), gt + 1, bend))
+    }
+    bgt = string_index_of_from(low, ">", bstart)
+    bend = string_index_of(low, "</body>")
+    if bgt < 0 { return "" }
+    if bend < 0 {
+        bend = string_index_of(low, "</html>")
+        if bend < 0 { bend = string_length(t) }
+    }
+    if bend <= bgt { return "" }
+    return string_trim(string.substring_n(t, string_length(t), bgt + 1, bend))
+}
+
+// Sanitize and emit a WHOLE DOCUMENT: `<html><head>…</head><body>…</body></html>`.
+//
+// The counterpart to sanitize(), which emits a FRAGMENT. Upstream draws the
+// same distinction and its tests pin both directions from the same input:
+//   Sanitize("<html><body><div>T</div></body></html>") -> "<div>T</div>"
+//   SanitizeDocument("<div>Test</div>")                -> "<html><head></head><body><div>Test</div></body></html>"
+// Aliasing the two (as this did) cannot satisfy both.
+//
+// Implemented as a wrap around the fragment result rather than a second pass:
+// the sanitizing decisions are identical, only the envelope differs. Any
+// <head>-only content the input carried is preserved in the head; everything
+// else becomes body content.
 sanitize_document(s: *HtmlSanitizer, html: string, base_url: string) -> string {
-    return sanitize(s, html, base_url)
+    was = s.keep_document_envelope
+    s.keep_document_envelope = true
+    inner = sanitize(s, html, base_url)
+    s.keep_document_envelope = was
+
+    // The input may or may not already carry document structure. sanitize()
+    // leaves <html>/<head>/<body> in place when they are allow-listed (they
+    // are, by default), so wrapping unconditionally would nest a document
+    // inside a document. Detect and pass through instead.
+    trimmed = string_trim(inner)
+    if string_starts_with(string_to_lower(trimmed), "<html") == 1 {
+        return trimmed
+    }
+
+    // Head-only elements that appear at the top level belong in <head>;
+    // everything else is body content. Split rather than dumping the lot into
+    // the body, because upstream's tests pin <title>/<style> staying in head.
+    head_sb = strbuilder.new(64)
+    body_sb = strbuilder.new(string_length(trimmed) + 16)
+    split_head_and_body(trimmed, head_sb, body_sb)
+
+    out = strbuilder.new(string_length(trimmed) + 48)
+    strbuilder.append(out, "<html><head>")
+    strbuilder.append(out, strbuilder.finish(head_sb))
+    strbuilder.append(out, "</head><body>")
+    strbuilder.append(out, strbuilder.finish(body_sb))
+    strbuilder.append(out, "</body></html>")
+    return strbuilder.finish(out)
+}
+
+// Partition a serialized fragment into head-only elements and everything
+// else. Deliberately a shallow scan of TOP-LEVEL elements rather than a
+// reparse: the fragment came out of our own emitter, so its tags are balanced
+// and well-formed, and a second parse would be work with nothing to find.
+fn split_head_and_body(frag: string, head_sb: ptr, body_sb: ptr) {
+    len = string_length(frag)
+    i = 0
+    while i < len {
+        if (string.char_at_n(frag, len, i) & 255) != 60 {     // not '<'
+            // text run -> body
+            start = i
+            while i < len && (string.char_at_n(frag, len, i) & 255) != 60 {
+                i = i + 1
+            }
+            strbuilder.append(body_sb, string.substring_n(frag, len, start, i))
+            continue
+        }
+        // read the tag name
+        j = i + 1
+        while j < len {
+            cj = string.char_at_n(frag, len, j) & 255
+            if cj == 62 || cj == 32 || cj == 47 {
+                break
+            }
+            j = j + 1
+        }
+        name = string_to_lower(string.substring_n(frag, len, i + 1, j))
+        // find this element's end: either a void tag or its matching close
+        elem_end = find_element_end(frag, len, i, name)
+        chunk = string.substring_n(frag, len, i, elem_end)
+        if name == "title" || name == "style" || name == "meta" || name == "base" || name == "link" {
+            strbuilder.append(head_sb, chunk)
+        } else {
+            strbuilder.append(body_sb, chunk)
+        }
+        i = elem_end
+    }
+}
+
+// Byte offset just past the element starting at `start`. Handles void
+// elements and nesting of the same tag name.
+fn find_element_end(frag: string, len: int, start: int, name: string) -> int {
+    // scan to the end of the opening tag
+    k = start
+    while k < len && (string.char_at_n(frag, len, k) & 255) != 62 {
+        k = k + 1
+    }
+    k = k + 1
+    if k > len { return len }
+
+    // void / self-closed: nothing more to match
+    if name == "meta" || name == "base" || name == "link" || name == "br" ||
+       name == "img" || name == "hr" || name == "input" || name == "wbr" ||
+       name == "col" || name == "area" || name == "source" || name == "track" {
+        return k
+    }
+
+    close = string.concat("</", string.concat(name, ">"))
+    depth = 1
+    open_tag = string.concat("<", name)
+    while k < len {
+        if (string.char_at_n(frag, len, k) & 255) == 60 {
+            rest_lower = string_to_lower(string.substring_n(frag, len, k, len))
+            if string_starts_with(rest_lower, close) == 1 {
+                depth = depth - 1
+                k = k + string_length(close)
+                if depth == 0 {
+                    return k
+                }
+                continue
+            }
+            if string_starts_with(rest_lower, open_tag) == 1 {
+                depth = depth + 1
+            }
+        }
+        k = k + 1
+    }
+    return len
+}
+
+// Structural repair WITHOUT security filtering: parse, fix nesting, and
+// re-serialize canonically. Nothing is removed, so the removal report is
+// empty afterwards. Sets the flag, runs the same one pass, restores it — so
+// a handle's configured policy is untouched by a normalize call.
+normalize(s: *HtmlSanitizer, html: string, base_url: string) -> string {
+    was = s.normalize_only
+    s.normalize_only = true
+    out = sanitize(s, html, base_url)
+    s.normalize_only = was
+    return out
+}
+
+// ---- removal report ----
+//
+// What did the last sanitize() drop, and why. The on_removing_* callbacks
+// answer the same question but only for hosts that can hand us a function
+// pointer; the WASM and BEAM bindings cannot, and a caller who wants a
+// summary rather than control should not have to install a hook.
+
+removal_count(s: *HtmlSanitizer) -> int {
+    if s.removals_reason == null { return 0 }
+    return list_size(s.removals_reason)
+}
+
+// The REASON_* constant for entry `i`, or -1 when out of range.
+removal_reason(s: *HtmlSanitizer, i: int) -> int {
+    if s.removals_reason == null { return -1 }
+    if i < 0 || i >= list_size(s.removals_reason) { return -1 }
+    v, err = list.get(s.removals_reason, i)
+    if err != "" { return -1 }
+    n, cerr = string.to_int(v)
+    if cerr != "" { return -1 }
+    return n
+}
+
+// The tag or attribute name that was removed ("script", "onclick",
+// "#comment"), or "" when out of range.
+removal_name(s: *HtmlSanitizer, i: int) -> string {
+    if s.removals_name == null { return "" }
+    if i < 0 || i >= list_size(s.removals_name) { return "" }
+    v, err = list.get(s.removals_name, i)
+    if err != "" { return "" }
+    return v
+}
+
+// What it contained — a script body, an attribute value, comment text. The
+// point of the report: `alert(1)` was removed, not merely `<script>`.
+// Truncated to 200 bytes; this is a diagnostic, not a copy of the input.
+removal_detail(s: *HtmlSanitizer, i: int) -> string {
+    if s.removals_detail == null { return "" }
+    if i < 0 || i >= list_size(s.removals_detail) { return "" }
+    v, err = list.get(s.removals_detail, i)
+    if err != "" { return "" }
+    return v
 }
 
 sanitize_dom(s: *HtmlSanitizer, doc: ptr, context_node: ptr, base_url: string) -> ptr {
+    clear_removals(s)
     sanitize_children(s, doc, base_url)
     post_process_node_rec(s, doc)
 

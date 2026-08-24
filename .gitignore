@@ -38,3 +38,7 @@
 **/target/
 *.class
 *.o
+
+# wasm build outputs (wasm/build.sh regenerates them)
+/wasm/dist/
+/wasm/build/

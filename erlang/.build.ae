@@ -9,53 +9,37 @@
 //     _build/htmlsanitizer_nif/priv/htmlsanitizer_nif.so
 //     _build/htmlsanitizer_nif/priv/libhtmlsanitizer.so   (the engine)
 //
-// elixir/ and gleam/ build.dep THIS node and read back the `beam_app`
-// artifact — the directory above. They put its PARENT on ERL_LIBS, which is
-// how OTP finds an application, and then load the very same compiled
-// htmlsanitizer_nif.beam. There is no second copy of the C anywhere in the
-// monorepo.
+// elixir/ and gleam/ build.dep THIS node and put `erlang/_build` on ERL_LIBS,
+// which is how OTP finds an application; they then load the very same
+// compiled htmlsanitizer_nif.beam. There is no second copy of the C anywhere
+// in the monorepo.
 //
-// The heavy lifting is in erlang/build.sh, which also locates erl_nif.h by
-// asking the runtime for code:root_dir() rather than guessing a distro path.
-// It exits 2 when the toolchain is missing so this node can SKIP honestly.
+// This used to shell out to erlang/build.sh. That script is gone: aeb's
+// `erlang.nif` builder now owns the whole job — erl_nif.h discovery via
+// `erl`'s own code:root_dir (right for kerl/asdf/Homebrew, not just Debian),
+// the deliberate omission of -lhtmlsanitizer from the NIF link line (a
+// DT_NEEDED there kills the BEAM inside the dynamic linker instead of
+// reporting a clean load error), erlc into ebin/, the verbatim app.src copy,
+// and staging the engine into priv/. A missing toolchain is a first-class
+// SKIP, counted as such in telemetry.
+
 import build
-import std.os
+import erlang
+import erlang (nif_source, erl_source, app_src, app_name, engine_lib)
 
 aeb(cap) {
     b = build.start()
     build.dep(b, "core/.build.ae")
     lib = build.dep_artifact(b, "core/.build.ae", "shared_lib")
-    root = build._get(b, "root")
 
-    app = "${root}/erlang/_build/htmlsanitizer_nif"
-
-    // Skip honestly rather than fail the DAG when the toolchain is absent.
-    have = os.system("command -v erlc >/dev/null 2>&1 && command -v erl >/dev/null 2>&1")
-    if have != 0 {
-        println("erlang: SKIPPED — erlc not installed (no Erlang/OTP on PATH)")
-        return 0
+    erlang.nif(b) {
+        nif_source("c_src/htmlsanitizer_nif.c")
+        erl_source("src/htmlsanitizer_nif.erl")
+        erl_source("src/htmlsanitizer.erl")
+        app_src("src/htmlsanitizer_nif.app.src")
+        app_name("htmlsanitizer_nif")
+        // Staged into priv/ so the app is self-contained; the NIF's load
+        // callback looks there after $HTMLSANITIZER_LIB.
+        engine_lib(lib)
     }
-    cc = os.system("command -v cc >/dev/null 2>&1 || command -v gcc >/dev/null 2>&1")
-    if cc != 0 {
-        println("erlang: SKIPPED — no C compiler (cc/gcc) on PATH")
-        return 0
-    }
-
-    // build.sh exits 2 for "toolchain gap" (most often erl_nif.h missing,
-    // which Debian splits into the erlang-dev package) and 1 for a real
-    // compile failure. The two must not be conflated.
-    rc = os.system("sh \"${root}/erlang/build.sh\" \"${lib}\"")
-    if rc == 2 {
-        println("erlang: SKIPPED — erl_nif.h not found (install erlang-dev / erlang-devel)")
-        return 0
-    }
-    if rc != 0 {
-        println("erlang: failed to build the NIF / OTP app")
-        return 1
-    }
-
-    // Publish the OTP app directory. elixir/ and gleam/ read this back and put
-    // its parent on ERL_LIBS — no hardcoded path, no copied C.
-    build.publish_artifact(b, "beam_app", "${app}")
-    return 0
 }

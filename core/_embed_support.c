@@ -2,7 +2,9 @@
  *
  * The sanitizer ENGINE is pure Aether (core/htmlsanitizer.ae). This file
  * carries only the two things Aether's stdlib cannot express, both of them
- * FFI plumbing rather than sanitizer logic:
+ * FFI plumbing rather than sanitizer logic. (A third — reading a std.set
+ * items() snapshot — was here until ae 0.576 added set.items_size /
+ * items_get; embed.ae now calls those directly.)
  *
  *   1. hs_raw_dup / hs_raw_free — the caller-owned-string bridge. Every
  *      `char*` the ABI returns is a plain malloc'd, NUL-terminated copy that
@@ -15,9 +17,12 @@
  *      Aether closures, and the engine invokes them via `call(cb, ...)`, which
  *      lowers to `fn(env, args...)`. A foreign function pointer is NOT that
  *      shape, so a binding cannot drop its own callback into the slot. These
- *      builders malloc a box in the SAME two-word layout codegen uses,
+ *      builders malloc a box in the SAME layout codegen uses,
  *
- *          typedef struct { void (*fn)(void); void* env; } _AeClosure;
+ *          typedef struct { void (*fn)(void); void* env;
+ *                           unsigned long long tag; } _AeClosureBox;
+ *
+ *      (the `tag` is mandatory as of aether #1439 — see HS_CLOSURE_TAG below)
  *
  *      set .fn to a trampoline of the right arity, and hide the host's
  *      function pointer (plus an opaque user_data) in .env. When the engine
@@ -59,54 +64,18 @@ void hs_raw_free(char* s) {
     free(s);
 }
 
-/* ---- 1b. allow-list enumeration ----
- *
- * set.items() hands back a MapKeys snapshot — `{ AetherString** keys; int
- * count; }` from std/collections/aether_collections.h — and the Aether-side
- * std.set surface has no per-entry accessor (its own regression test only
- * null-checks the snapshot). Rather than push a stdlib change upstream just
- * to enumerate an allow-list, read the snapshot here.
- *
- * We need each entry's `data` pointer. The snapshot holds AetherString* —
- * mirrored below from std/string/aether_string.h; the magic field lets us
- * verify we really have one before dereferencing, and fall back to treating
- * the entry as a plain char* otherwise (the same magic-dispatch trick
- * aether_heap_str_free uses). Returns a BORROWED pointer into the snapshot;
- * embed.ae dups it before handing it to the host. */
-#define HS_AETHER_STRING_MAGIC 0xAE57C0DE
-
-typedef struct {
-    unsigned int magic;
-    int ref_count;
-    size_t length;
-    size_t capacity;
-    char* data;
-} HsAetherString;
-
-typedef struct { HsAetherString** keys; int count; } HsMapKeys;
-
-int hs_embed_keys_count(void* snap) {
-    HsMapKeys* k = (HsMapKeys*)snap;
-    return k ? k->count : 0;
-}
-
-const char* hs_embed_keys_at(void* snap, int index) {
-    HsMapKeys* k = (HsMapKeys*)snap;
-    if (!k || index < 0 || index >= k->count) return "";
-    HsAetherString* entry = k->keys[index];
-    if (!entry) return "";
-    if (entry->magic == HS_AETHER_STRING_MAGIC) {
-        return entry->data ? entry->data : "";
-    }
-    return (const char*)entry;   /* a plain char*, not a refcounted string */
-}
-
 /* ---- 2. callback trampolines ---- */
 
-/* Mirror of the codegen prologue's _AeClosure. This TU need not see the
- * generated typedef; the layout is the contract (see the aether_stringseq.h
- * "Closure ABI" note upstream). */
-typedef struct { void (*fn)(void); void* env; } HsClosure;
+/* Mirrors codegen's _AeClosureBox. This TU need not see the generated
+ * typedef; the layout is the contract (see the aether_stringseq.h "Closure
+ * ABI" note upstream). The `tag` third field is REQUIRED as of
+ * aether #1439: _aether_unbox_closure() now validates it and panics with
+ * "unbox_closure() on a value that was never boxed" otherwise — which is
+ * exactly what a bare two-word box looks like to it. The fn/env prefix is
+ * deliberately unchanged (std/collections and std/worker mirror that layout,
+ * so the tag has to go last, never first). */
+#define HS_CLOSURE_TAG 0xAEC105EDB0CEDULL
+typedef struct { void (*fn)(void); void* env; unsigned long long tag; } HsClosure;
 
 /* What we smuggle through .env: the host's function pointer plus an opaque
  * user_data the host uses to find its own instance/handler. */
@@ -205,6 +174,7 @@ static void* hs_box(void (*fn)(void), void* host_fn, void* user_data) {
     if (!box) { free(env); return NULL; }
     box->fn = fn;
     box->env = env;
+    box->tag = HS_CLOSURE_TAG;
     return box;
 }
 

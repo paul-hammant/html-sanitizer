@@ -172,7 +172,7 @@ void main() {
 
   test('sanitize_document is wired', () {
     expect(s.sanitizeDocument('<div>doc<script>x</script></div>'),
-        equals('<div>doc</div>'));
+        equals('<html><head></head><body><div>doc</div></body></html>'));
   });
 
   test('allow_data_attributes flag', () {
@@ -202,6 +202,6 @@ void main() {
   test('one-shot helpers', () {
     expect(sanitize('<div>a<script>b</script></div>'), equals('<div>a</div>'));
     expect(sanitizeDocument('<div>a<script>b</script></div>'),
-        equals('<div>a</div>'));
+        equals('<html><head></head><body><div>a</div></body></html>'));
   });
 }

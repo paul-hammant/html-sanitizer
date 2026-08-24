@@ -11,7 +11,9 @@ FFI wrapper over that one engine, so they cannot drift from each other —
 identical sanitization across languages is a build-time guarantee, not a test
 target.
 
-It is a port of Michael Ganss's C# [HtmlSanitizer](https://github.com/mganss/HtmlSanitizer).
+It is a port of Michael Ganss's C#
+[HtmlSanitizer](https://github.com/mganss/HtmlSanitizer) — see
+[Upstream](#upstream-michael-gansss-htmlsanitizer).
 
 ```python
 from htmlsanitizer import HtmlSanitizer
@@ -33,6 +35,26 @@ Here there is exactly one tokenizer, one DOM, one CSS parser, one URL
 resolver, and one set of allow-lists. Fix a bypass once and every binding has
 the fix the moment it rebuilds.
 
+## Upstream: Michael Ganss's HtmlSanitizer
+
+This project exists because of
+[**HtmlSanitizer**](https://github.com/mganss/HtmlSanitizer) by
+[**Michael Ganss**](https://github.com/mganss) and its contributors — the
+long-established C# library that this engine is a port of. Not a
+reimplementation from a spec: the allow-lists, the CSS and URL filtering
+rules, the callback surface and the removal semantics are all theirs.
+
+We also run **their test suite**. `core_tests/test_ganss_parity.ae` carries
+186 of upstream's cases, machine-translated from `Tests.cs`. Those vectors
+encode a decade of real XSS bypass reports, and they are the most valuable
+thing this repo borrows — considerably more so than the source. Where our
+output differs from theirs we treat it as our bug to explain, and the current
+score is published in [`docs/ganss-parity.md`](docs/ganss-parity.md) rather
+than quietly rounded up.
+
+HtmlSanitizer is MIT-licensed, and so is this. See
+[Credits and licence](#credits-and-licence).
+
 ## Layout
 
 ```
@@ -49,6 +71,7 @@ html-sanitizer/
   erlang/        # C NIF (canonical, shared across the BEAM)
   elixir/ gleam/ # share the Erlang NIF — no second .so
   kotlin/ scala/ clojure/ groovy/   # JVM family — thin layers over the Java classes
+  wasm/          # browser/DOM — recompiles the engine to wasm32 (not a .so consumer)
   docs/          # conformance suite, ABI reference
 ```
 
@@ -73,6 +96,7 @@ html-sanitizer/
 | Elixir | shares the Erlang NIF | [elixir/](elixir/README.md) |
 | Gleam | shares the Erlang NIF | [gleam/](gleam/README.md) |
 | Pharo | UnifiedFFI (Smalltalk) | [pharo/](pharo/README.md) |
+| Browser / DOM | WebAssembly (wasm32, ~62 KB) | [wasm/](wasm/README.md) |
 
 **JVM family.** Kotlin, Scala, Clojure and Groovy reach the engine through the
 **Java binding's classes** via seamless JVM interop — there is *no second
@@ -84,6 +108,17 @@ native FFI*. Each is a thin idiomatic layer with its own conformance suite.
 | Scala | `withSanitizer` helpers | [scala/](scala/README.md) |
 | Clojure | fns + `with-open` | [clojure/](clojure/README.md) |
 | Groovy | `Closure` DSL | [groovy/](groovy/README.md) |
+
+**Browser.** `wasm/` is the one target that does not load the `.so` — a browser
+cannot `dlopen` one. It recompiles the *same* engine sources to wasm32, so
+client-side sanitization is the same logic as the server's rather than a
+JavaScript reimplementation with its own distinct set of holes:
+
+```js
+import { HtmlSanitizer } from './dist/htmlsanitizer.mjs';
+const s = await HtmlSanitizer.create();
+el.innerHTML = s.sanitize(untrustedHtml);
+```
 
 ## Features
 
@@ -152,10 +187,23 @@ behavioural suite. Two real bugs were found and fixed this way:
   the URL was treated as relative — while browsers strip leading whitespace and
   execute it. It now skips leading whitespace and C0 controls.
 
-One gap is knowingly open: CSS `expression()` is not filtered (exploitable only
-in IE ≤ 10; upstream leaves it to a configurable regex this port has a field
-for but does not yet wire up). The suite asserts it as blocked so that wiring
-it up flips the test to green.
+The suite now has **no known gaps** — every vector in it is blocked. CSS
+`expression()` was the last one open; it is filtered as of the always-on CSS
+value checks described below.
+
+Two further bypasses were found by porting upstream's own test suite (see
+[`docs/ganss-parity.md`](docs/ganss-parity.md)) and fixed:
+
+- **An unparseable scheme was treated as a relative URL.** `get_scheme()`
+  returns `""` for both `/page.html` (safe) and `` `javascript:alert(1)` ``
+  (a backtick is not a valid scheme character, so parsing gives up). Both call
+  sites read `""` as "relative, therefore safe", so the grave-accent payload
+  kept its attribute verbatim. Now a colon before any `/?#` means the author
+  wrote a *scheme*, and one we cannot identify is refused.
+- **Numeric entities without a closing semicolon were not decoded.** Browsers
+  read `&#x6a` as `j`; we required the `;`, so
+  `<IMG SRC=&#x6a&#x61&#x76&#x61&#x73&#x63&#x72&#x69&#x70&#x74&#x3a;alert(1)>`
+  never formed `javascript:` and the scheme check never fired.
 
 ## Known issues
 
@@ -182,5 +230,16 @@ it up flips the test to green.
 
 ## Credits and licence
 
-Portions copyright (c) 2013-2016 Michael Ganss and the original C#
-HtmlSanitizer contributors. See [LICENSE](LICENSE).
+**Michael Ganss and the HtmlSanitizer contributors.** Portions copyright (c)
+2013-2016. [github.com/mganss/HtmlSanitizer](https://github.com/mganss/HtmlSanitizer),
+MIT. Two distinct debts, both substantial:
+
+- **The engine** — `core/htmlsanitizer.ae` is a port of their C# library. Its
+  default allow-lists (tags, attributes, CSS properties, schemes, URI
+  attributes), its CSS and URL filtering behaviour, and its callback surface
+  are derived from that work.
+- **The tests** — `core_tests/test_ganss_parity.ae` reproduces 186 of their
+  test cases. A sanitizer is only as good as the bypasses it has been shown,
+  and that corpus is theirs.
+
+This project is MIT-licensed, as is upstream. See [LICENSE](LICENSE).

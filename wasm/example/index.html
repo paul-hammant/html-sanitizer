@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>HtmlSanitizer — WASM in the DOM</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+    max-width: 62rem; margin: 2rem auto; padding: 0 1rem;
+  }
+  h1 { font-size: 1.4rem; margin-bottom: .25rem; }
+  .sub { opacity: .7; margin-top: 0; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  @media (max-width: 700px) { .cols { grid-template-columns: 1fr; } }
+  textarea {
+    width: 100%; height: 11rem; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace;
+    padding: .6rem; box-sizing: border-box;
+    border: 1px solid rgba(128,128,128,.45); border-radius: 6px;
+    background: canvas; color: canvastext;
+  }
+  .panel {
+    border: 1px solid rgba(128,128,128,.45); border-radius: 6px;
+    padding: .6rem; min-height: 11rem; box-sizing: border-box;
+  }
+  .label { font-weight: 600; font-size: .82rem; text-transform: uppercase;
+           letter-spacing: .04em; opacity: .75; margin-bottom: .35rem; }
+  pre { margin: 0; white-space: pre-wrap; word-break: break-word;
+        font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace; }
+  .row { display: flex; gap: .5rem; flex-wrap: wrap; margin: .75rem 0; }
+  button {
+    font: inherit; padding: .35rem .7rem; cursor: pointer;
+    border: 1px solid rgba(128,128,128,.5); border-radius: 5px;
+    background: color-mix(in srgb, canvas 90%, canvastext);
+    color: canvastext;
+  }
+  button:hover { background: color-mix(in srgb, canvas 80%, canvastext); }
+  .status { font-size: .85rem; opacity: .75; }
+  .note { font-size: .85rem; opacity: .8; border-left: 3px solid rgba(128,128,128,.4);
+          padding-left: .7rem; margin: 1rem 0; }
+</style>
+</head>
+<body>
+
+<h1>HtmlSanitizer — running in the browser as WebAssembly</h1>
+<p class="sub">The same pure-Aether engine the Python, Java, Go and Rust bindings use — compiled to wasm32, ~62&nbsp;KB.</p>
+
+<p class="note">
+  <strong>Why this matters:</strong> the sanitizer here is not a JavaScript
+  reimplementation. It is byte-for-byte the same engine as your backend runs,
+  so what the server strips and what the browser strips cannot diverge.
+</p>
+
+<div class="row">
+  <button data-payload='<div onclick="steal()">hi <script>alert(1)</script></div>'>script + onclick</button>
+  <button data-payload='<a href=" javascript:alert(1)">leading-space scheme</a>'>scheme padding</button>
+  <button data-payload='<a href="&#106;avascript:alert(1)">entity encoded</a>'>entity encoding</button>
+  <button data-payload='<img src=x onerror=alert(1)>'>img onerror</button>
+  <button data-payload='<iframe src="//evil.example"></iframe><p>after</p>'>iframe</button>
+  <button data-payload='<div style="width: expression(alert(1)); color: red">css</div>'>css</button>
+  <button data-payload='<a href="/page">relative url</a>'>relative url (base set)</button>
+</div>
+
+<div class="cols">
+  <div>
+    <div class="label">Untrusted input</div>
+    <textarea id="in" spellcheck="false"></textarea>
+  </div>
+  <div>
+    <div class="label">Sanitized output (escaped, so you can read it)</div>
+    <div class="panel"><pre id="out"></pre></div>
+  </div>
+</div>
+
+<div class="cols" style="margin-top:1rem">
+  <div>
+    <div class="label">Rendered into the DOM via innerHTML</div>
+    <div class="panel" id="live"></div>
+  </div>
+  <div>
+    <div class="label">Engine</div>
+    <div class="panel"><pre id="info" class="status">loading wasm…</pre></div>
+  </div>
+</div>
+
+<script type="module">
+import { HtmlSanitizer } from '../dist/htmlsanitizer.mjs';
+
+const $in = document.getElementById('in');
+const $out = document.getElementById('out');
+const $live = document.getElementById('live');
+const $info = document.getElementById('info');
+
+const t0 = performance.now();
+const s = await HtmlSanitizer.create();
+const loadMs = (performance.now() - t0).toFixed(1);
+
+const BASE = 'https://example.com';
+
+function render() {
+  const raw = $in.value;
+  const t = performance.now();
+  const clean = s.sanitize(raw, BASE);
+  const us = ((performance.now() - t) * 1000).toFixed(0);
+
+  $out.textContent = clean;
+  // Safe: `clean` came out of the sanitizer. This is the actual DOM use case.
+  $live.innerHTML = clean;
+
+  $info.textContent =
+    `ABI version   ${s.abiVersion}\n` +
+    `wasm load     ${loadMs} ms\n` +
+    `last sanitize ${us} µs  (${raw.length} → ${clean.length} bytes)\n` +
+    `allowed tags  ${s.allowedTags.size}\n` +
+    `schemes       ${s.allowedSchemes.toArray().join(', ')}\n` +
+    `base url      ${BASE}`;
+}
+
+for (const b of document.querySelectorAll('button[data-payload]')) {
+  b.addEventListener('click', () => { $in.value = b.dataset.payload; render(); });
+}
+$in.addEventListener('input', render);
+
+$in.value = '<div onclick="steal()">hi <script>alert(1)</script><a href="/page">link</a></div>';
+render();
+</script>
+
+</body>
+</html>

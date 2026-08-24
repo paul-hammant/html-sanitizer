@@ -1,41 +1,28 @@
-// The Java binding, compiled ONCE for the whole JVM family.
+// The Java binding's classes, compiled once and shared by the whole JVM
+// family: kotlin/, scala/, clojure/ and groovy/ all layer over THESE classes
+// rather than binding the engine a second time.
 //
-// Output: target/.aeb/java-classes — the org.htmlsanitizer package (FFM /
-// Panama). Published on this node's dep edge as the "classes_dir" artifact.
+// Uses aeb's `java.javac` builder. `source_layout("maven idiomatic")` is
+// REQUIRED, not decorative: without it javac only globs *.java at the module
+// root (depth 1) and reports "no Java source files found" — a green no-op, not
+// an error, which is an easy thing to miss. The important part is what it
+// publishes: the standard
+// `jvm_classpath_deps_including_transitive` artifact, which every JVM SDK
+// builder reads through `build._build_dep_classpath(...)`. The hand-rolled
+// javac shell-out this replaced published a bespoke `classes_dir` instead,
+// which those builders cannot see — so migrating this node is what unblocks
+// the kotlin/scala/groovy/clojure migrations.
 //
-// Why this node exists at all: kotlin/, scala/, clojure/ and groovy/ are NOT
-// separate FFI bindings. There is exactly ONE FFI per runtime, and on the JVM
-// that is java/src/main/java — the four sibling bindings are thin idiomatic
-// layers reached by ordinary JVM interop. They therefore all need the same
-// compiled classes on their classpath, and compiling them five times (once per
-// consumer) would be both slow and a chance for the five copies to drift.
-// So: one build node, five consumers, one `build.dep_artifact(..., "classes_dir")`.
-//
-// javac only — no Maven. The main sources have no third-party dependency
-// (FFM is stdlib since JDK 22), so this needs nothing but a JDK and can never
-// fail on artifact resolution. java/pom.xml remains for downstream consumers.
+// JDK 22+ is required: the binding is FFM/Panama (java.lang.foreign), final
+// in 22. `release` is deliberately NOT pinned below that.
+
 import build
-import std.os
+import java
+import java (source_layout)
 
 aeb(cap) {
     b = build.start()
-    root = build._get(b, "root")
-
-    out = "${root}/target/.aeb/java-classes"
-
-    // Fresh directory each time: a stale .class from a since-renamed source
-    // would otherwise stay on every downstream binding's classpath.
-    rc = os.system("cd \"${root}/java\" && rm -rf \"${out}\" && mkdir -p \"${out}\" && javac -d \"${out}\" $(find src/main/java -name '*.java')")
-    if rc != 0 {
-        println("java: javac failed (need JDK 22+ for the FFM API; JDK 24 tested)")
-        return 1
+    java.javac(b) {
+        source_layout("maven idiomatic")   // sources live in src/main/java
     }
-    println("java: built org.htmlsanitizer classes")
-
-    // Every JVM-family binding reads this back with
-    //   build.dep_artifact(b, "java/.build.ae", "classes_dir")
-    // rather than hardcoding the path — same contract as core/.build.ae's
-    // "shared_lib".
-    build.publish_artifact(b, "classes_dir", out)
-    return 0
 }

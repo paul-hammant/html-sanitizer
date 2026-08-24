@@ -45,10 +45,6 @@ extern hs_embed_cb_free_env(box: ptr)
 // Frees the box AND its env — for replacing/clearing a hook, where nothing
 // else will ever see the outgoing pointer. See _embed_support.c.
 extern hs_embed_cb_free_box(box: ptr)
-// Read a std.set items() snapshot (a MapKeys) — std.set has no per-entry
-// accessor of its own. Returns a borrowed pointer; dup before returning.
-extern hs_embed_keys_count(snap: ptr) -> int
-extern hs_embed_keys_at(snap: ptr, index: int) -> string
 
 // ---- lifecycle ----
 
@@ -104,6 +100,71 @@ hs_embed_sanitize_document(h: ptr, html: string, base_url: string) -> string {
     s = h as *HtmlSanitizer
     out = htmlsanitizer.sanitize_document(s, html, base_url)
     return hs_raw_dup(out)
+}
+
+// ---- baselines ----
+
+// Apply a named sanitization target. 0 = the default web policy (a no-op,
+// since new() installs it), 1 = email-safe. Returns 1 on success, 0 for an
+// unknown id — a binding should surface that rather than let a caller believe
+// a baseline was applied when it was not.
+//
+// A baseline REPLACES the allow-lists rather than intersecting, so apply it
+// BEFORE any per-call configuration; anything you add afterwards sticks.
+hs_embed_use_baseline(h: ptr, baseline: int) -> int {
+    if h == null { return 0 }
+    s = h as *HtmlSanitizer
+    if htmlsanitizer.use_baseline(s, baseline) { return 1 }
+    return 0
+}
+
+// ---- normalize: structural repair without security filtering ----
+
+// Parse, repair nesting, and re-serialize canonically — removing NOTHING.
+// The removal report is empty afterwards. This is the "make it well-formed"
+// job, separable from "make it safe"; a caller wanting both calls sanitize.
+hs_embed_normalize(h: ptr, html: string, base_url: string) -> string {
+    if h == null { return hs_raw_dup("") }
+    s = h as *HtmlSanitizer
+    out = htmlsanitizer.normalize(s, html, base_url)
+    return hs_raw_dup(out)
+}
+
+// ---- removal report ----
+//
+// What the last sanitize() dropped, and why. Deliberately a pull API rather
+// than only the on_removing_* callbacks: the WASM and BEAM bindings cannot
+// hand the engine a function pointer at all, and a caller who wants a summary
+// should not have to install a hook to get one.
+//
+// Read after a sanitize call; the report describes THAT call.
+
+hs_embed_removal_count(h: ptr) -> int {
+    if h == null { return 0 }
+    s = h as *HtmlSanitizer
+    return htmlsanitizer.removal_count(s)
+}
+
+// The REASON_* constant (see docs/abi.md), or -1 out of range.
+hs_embed_removal_reason(h: ptr, index: int) -> int {
+    if h == null { return -1 }
+    s = h as *HtmlSanitizer
+    return htmlsanitizer.removal_reason(s, index)
+}
+
+// Tag or attribute name ("script", "onclick", "#comment"). Caller-owned.
+hs_embed_removal_name(h: ptr, index: int) -> string {
+    if h == null { return hs_raw_dup("") }
+    s = h as *HtmlSanitizer
+    return hs_raw_dup(htmlsanitizer.removal_name(s, index))
+}
+
+// What it contained — script body, attribute value, comment text; truncated
+// to 200 bytes. Caller-owned.
+hs_embed_removal_detail(h: ptr, index: int) -> string {
+    if h == null { return hs_raw_dup("") }
+    s = h as *HtmlSanitizer
+    return hs_raw_dup(htmlsanitizer.removal_detail(s, index))
 }
 
 // ---- boolean flags ----
@@ -231,11 +292,11 @@ hs_embed_item_at(h: ptr, which: int, index: int) -> string {
         set.items_free(snap)
         return hs_raw_dup("")
     }
-    if index >= hs_embed_keys_count(snap) {
+    if index >= set.items_size(snap) {
         set.items_free(snap)
         return hs_raw_dup("")
     }
-    v = hs_embed_keys_at(snap, index)
+    v = set.items_get(snap, index)
     out = hs_raw_dup(v)
     set.items_free(snap)
     return out

@@ -281,8 +281,11 @@ int main(int argc, char** argv) {
         hs_on_removing_style(h, (void*)style_hook, (void*)MARKER);
         char* out = hs_sanitize(h, "<div style=\"-custom-thing: 3; color: red\">x</div>", "");
         /* the hook kept the custom property; color was allowed anyway */
+        /* Two serialization agreements with upstream C# are visible here:
+         * no trailing semicolon (`a: 1; b: 2`), and colours normalised to
+         * AngleSharp's canonical rgba(r, g, b, a). */
         check_str("on_removing_style (4-arg) cancels", out,
-                  "<div style=\"-custom-thing: 3; color: red;\">x</div>");
+                  "<div style=\"-custom-thing: 3; color: rgba(255, 0, 0, 1)\">x</div>");
         check_int("style hook fired", style_hook_calls >= 1, 1);
         hs_free_string(out);
         hs_free(h);
@@ -322,7 +325,7 @@ int main(int argc, char** argv) {
     {
         void* h = hs_new();
         char* out = hs_sanitize_document(h, "<div>doc<script>x</script></div>", "");
-        check_str("sanitize_document", out, "<div>doc</div>");
+        check_str("sanitize_document", out, "<html><head></head><body><div>doc</div></body></html>");
         hs_free_string(out);
         hs_free(h);
     }

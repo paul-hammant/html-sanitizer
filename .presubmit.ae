@@ -19,6 +19,9 @@ aeb(cap) {
     build.dep(b, "core_tests/.tests.ae")
     build.dep(b, "core_tests/.abi.ae")
     build.dep(b, "core_tests/.xss.ae")
+    build.dep(b, "core_tests/.ganss.ae")
+    build.dep(b, "core_tests/.normalize.ae")
+    build.dep(b, "core_tests/.baselines.ae")
 
     // Native-FFI bindings.
     build.dep(b, "python/.tests.ae")
@@ -35,6 +38,9 @@ aeb(cap) {
     build.dep(b, "nim/.tests.ae")
     build.dep(b, "zig/.tests.ae")
     build.dep(b, "pharo/.tests.ae")
+
+    // Browser target: recompiles the engine to wasm32 rather than loading the .so.
+    build.dep(b, "wasm/.tests.ae")
 
     // BEAM family — erlang owns the NIF; elixir and gleam share it.
     build.dep(b, "erlang/.tests.ae")

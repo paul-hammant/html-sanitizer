@@ -216,6 +216,6 @@ fn abi_version() {
 fn sanitize_document_is_wired() {
     assert_eq!(
         s().sanitize_document("<div>doc<script>x</script></div>"),
-        "<div>doc</div>"
+        "<html><head></head><body><div>doc</div></body></html>"
     );
 }

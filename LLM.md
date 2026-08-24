@@ -69,6 +69,70 @@ Facts that bit during the build-out, all still true:
   `MapKeys` struct directly in C. If std.set ever grows a real accessor,
   that helper can go.
 
+## The WASM target (`wasm/`)
+
+The one binding that does NOT consume `libhtmlsanitizer.so` — a browser can't
+`dlopen` it. `wasm/build.sh` recompiles the same engine sources to wasm32 via
+Emscripten, so the DOM gets the same logic, not a JS rewrite. ~62 KB.
+
+Two traps, both already paid for:
+
+- **Use `aetherc --emit=csrc`, not plain `aetherc`.** Only that mode applies
+  the `aether_` export mangling. Plain codegen emits bare `hs_embed_new`, and
+  the link dies with "symbol exported via --export not found" — which looks
+  like a wasm problem and isn't.
+- **Don't feed it `share/aether/MANIFEST`.** `multicore_scheduler.c` fails a
+  `Mailbox` alignment `static_assert` on wasm32. `build.sh` mirrors the
+  `RUNTIME_FILES` list from Aether's own `make ci-wasm` instead, plus
+  strbuilder/bytes/mem/set/stringseq/alloc.
+
+PCRE2 is stubbed (`wasm/src/regex_stub.c`) because the engine's only regex use
+is `disallow_css_property_value_regex`, which **no C-ABI caller can set** —
+there is no way to hand a compiled `std.regex` across the FFI, so the field is
+always null in a `--emit=lib` build and the regex calls are dead code there.
+(NB: the field IS wired in the engine — an earlier note here wrongly said
+"never wired". `sanitize_css_style_attribute` consults it and drops matching
+declarations; proven with `^rgba\(0.*`. It is unreachable from the bindings,
+not unimplemented.) If a C-ABI setter is ever added, this stub must go and
+PCRE2 becomes an emscripten port / a real wasi build input.
+
+**Two backends, both wired and tested.** `build.sh` (emcc, ~62KB + JS glue) and
+`build-zig.sh` (`zig cc -target wasm32-wasi`, ~85KB, NO glue — driven by the
+plain `WebAssembly` API). `wasm/.tests.ae` runs whichever is installed, both if
+both, asserting the SAME 22 checks against each; a divergence is a build bug.
+
+The Zig path needs **Zig >= 0.16** (0.13 shipped no `bits/setjmp.h` for wasm at
+all) and **ae >= 0.553**. `build-zig.sh` version-gates on both.
+
+**Two local workarounds are GONE — don't reintroduce them.** This backend used
+to patch a scratch copy of `aether_panic.c` and ship a `_longjmp` trap stub
+(`wasm/src/wasi_longjmp_stub.c`, deleted). Both fixes landed upstream as the
+`__wasi__` arms in `aether_panic.h`/`.c`. The only shim left is
+`wasm/src/regex_stub.c`, which is our choice (PCRE2 is dead code here), not a
+toolchain gap.
+
+Still passed explicitly, matching ae's own `--target=wasm32-wasi` backend:
+- `-D__wasm_exception_handling__=1` satisfies wasi-libc's `setjmp.h` guard. Do
+  NOT "fix" this by enabling the EH backend (`-mllvm -wasm-enable-sjlj`): that
+  lowers setjmp/longjmp to `__wasm_setjmp`/`__wasm_longjmp`, which live in
+  wasi-libc's `setjmp/wasm32/rt.c` — a file zig's bundled wasi-libc does not
+  compile, so it only moves the link error.
+- `-D_WASI_EMULATED_SIGNAL` (+ process-clocks/mman siblings) and
+  `-DAETHER_NO_THREADING`. WASI's `pthread_create` STUB returns `EAGAIN`
+  rather than failing to link, so a threaded build hangs on the scheduler
+  readiness barrier instead of erroring.
+
+**`ae build --target=wasm32-wasi` now builds executables directly** (ae 0.553),
+so for a *program* you need no script at all — verified: the 12-case
+behavioural suite and the 47-vector XSS suite both run green under Node's WASI,
+identical to native. `build-zig.sh` survives only because `--emit=lib` is not
+yet supported for cross targets, so a *library of exports* (what a browser
+binding needs) must still be hand-linked from `--emit=csrc` output.
+
+Callbacks (conformance checks 10/11) are deliberately not exposed: it needs
+`addFunction` + `-sALLOW_TABLE_GROWTH` + a reserved table, for a feature a DOM
+sanitizer rarely wants.
+
 ## Build/test (aeb)
 
 - `aeb` is at `~/.local/bin/aeb`, **not on `PATH`** in a fresh shell.

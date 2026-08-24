@@ -1,0 +1,189 @@
+// normalize / sanitize separation, and the removal report.
+//
+// Two jobs that were previously one:
+//
+//   normalize(html)  structural repair only — parse, fix nesting, serialize
+//                    canonically. Makes NO security judgement, removes
+//                    nothing, and leaves the removal report empty.
+//   sanitize(html)   normalize's structural work PLUS security filtering,
+//                    and a report of what went and why.
+//
+// The report exists because the on_removing_* callbacks cannot serve every
+// caller: the WASM and BEAM bindings have no way to hand the engine a
+// function pointer, and a caller who wants a summary rather than the ability
+// to cancel a removal should not have to install a hook.
+
+import core.htmlsanitizer
+import core.htmlsanitizer (HtmlSanitizer)
+import std.string
+import std.set
+import std.spec
+
+main() {
+    fw = spec.init()
+
+    spec.describe(fw, "normalize") {
+        spec.it("repairs structure without removing anything") callback {
+            s = htmlsanitizer.new()
+            out = htmlsanitizer.normalize(s, "<div onclick=\"steal()\"><script>alert(1)</script>", "")
+            spec.assert_true(string.contains(out, "onclick") == 1,
+                "normalize keeps a dangerous attribute")
+            spec.assert_true(string.contains(out, "alert(1)") == 1,
+                "normalize keeps script content")
+            spec.assert_true(string.contains(out, "</div>") == 1,
+                "normalize closes the unclosed div")
+            htmlsanitizer.free(s)
+        }
+
+        spec.it("reports no removals") callback {
+            s = htmlsanitizer.new()
+            _ = htmlsanitizer.normalize(s, "<div onclick=x><script>alert(1)</script></div>", "")
+            spec.assert_eq(htmlsanitizer.removal_count(s), 0,
+                "normalize removes nothing, so the report is empty")
+            htmlsanitizer.free(s)
+        }
+
+        spec.it("does not disturb the handle's policy") callback {
+            s = htmlsanitizer.new()
+            _ = htmlsanitizer.normalize(s, "<script>alert(1)</script>", "")
+            after = htmlsanitizer.sanitize(s, "<script>alert(1)</script>", "")
+            spec.assert_str_eq(after, "", "a later sanitize still filters")
+            htmlsanitizer.free(s)
+        }
+    }
+
+    spec.describe(fw, "removal report") {
+        spec.it("names the tag and shows what it contained") callback {
+            s = htmlsanitizer.new()
+            _ = htmlsanitizer.sanitize(s, "<div><script>alert('boo')</script></div>", "")
+            spec.assert_eq(htmlsanitizer.removal_count(s), 1, "one removal")
+            spec.assert_str_eq(htmlsanitizer.removal_name(s, 0), "script", "the tag name")
+            spec.assert_str_eq(htmlsanitizer.removal_detail(s, 0), "alert('boo')",
+                "the removed script body — the point of the report")
+            spec.assert_eq(htmlsanitizer.removal_reason(s, 0), 0, "REASON_NOT_ALLOWED_TAG")
+            htmlsanitizer.free(s)
+        }
+
+        spec.it("names a removed attribute and its value") callback {
+            s = htmlsanitizer.new()
+            _ = htmlsanitizer.sanitize(s, "<div onclick=\"steal()\">x</div>", "")
+            spec.assert_eq(htmlsanitizer.removal_count(s), 1, "one removal")
+            spec.assert_str_eq(htmlsanitizer.removal_name(s, 0), "onclick", "the attribute")
+            spec.assert_str_eq(htmlsanitizer.removal_detail(s, 0), "steal()", "its value")
+            htmlsanitizer.free(s)
+        }
+
+        spec.it("describes each call, not the handle's history") callback {
+            s = htmlsanitizer.new()
+            _ = htmlsanitizer.sanitize(s, "<script>a</script>", "")
+            spec.assert_eq(htmlsanitizer.removal_count(s), 1, "first call removed one")
+            _ = htmlsanitizer.sanitize(s, "<p>clean</p>", "")
+            spec.assert_eq(htmlsanitizer.removal_count(s), 0,
+                "a clean call resets the report rather than accumulating")
+            htmlsanitizer.free(s)
+        }
+
+        spec.it("is empty when nothing is removed") callback {
+            s = htmlsanitizer.new()
+            _ = htmlsanitizer.sanitize(s, "<p>hello</p>", "")
+            spec.assert_eq(htmlsanitizer.removal_count(s), 0, "nothing to report")
+            htmlsanitizer.free(s)
+        }
+
+        spec.it("returns safe values out of range") callback {
+            s = htmlsanitizer.new()
+            _ = htmlsanitizer.sanitize(s, "<p>hello</p>", "")
+            spec.assert_eq(htmlsanitizer.removal_reason(s, 5), -1, "reason out of range")
+            spec.assert_str_eq(htmlsanitizer.removal_name(s, 5), "", "name out of range")
+            spec.assert_str_eq(htmlsanitizer.removal_detail(s, -1), "", "negative index")
+            htmlsanitizer.free(s)
+        }
+    }
+
+    spec.describe(fw, "structural repair") {
+        spec.it("gives bare rows the tbody the parser omitted") callback {
+            s = htmlsanitizer.new()
+            spec.assert_str_eq(htmlsanitizer.sanitize(s, "<table><tr><td>x</td></tr></table>", ""),
+                "<table><tbody><tr><td>x</td></tr></tbody></table>",
+                "browsers insert tbody; the DOM has it whether the source did or not")
+            htmlsanitizer.free(s)
+        }
+
+        spec.it("gives a bare cell a row as well") callback {
+            s = htmlsanitizer.new()
+            spec.assert_str_eq(htmlsanitizer.sanitize(s, "<table><td>x</td></table>", ""),
+                "<table><tbody><tr><td>x</td></tr></tbody></table>",
+                "td alone needs both tr and tbody")
+            htmlsanitizer.free(s)
+        }
+
+        spec.it("is idempotent — existing tbody is untouched") callback {
+            s = htmlsanitizer.new()
+            already = "<table><tbody><tr><td>x</td></tr></tbody></table>"
+            spec.assert_str_eq(htmlsanitizer.sanitize(s, already, ""), already,
+                "repairing repaired markup changes nothing")
+            htmlsanitizer.free(s)
+        }
+
+        spec.it("leaves thead where it is") callback {
+            s = htmlsanitizer.new()
+            out = htmlsanitizer.sanitize(s,
+                "<table><thead><tr><th>h</th></tr></thead><tr><td>x</td></tr></table>", "")
+            spec.assert_str_eq(out,
+                "<table><thead><tr><th>h</th></tr></thead><tbody><tr><td>x</td></tr></tbody></table>",
+                "section elements keep their place; only loose rows are gathered")
+            htmlsanitizer.free(s)
+        }
+
+        spec.it("applies to normalize too, not just sanitize") callback {
+            s = htmlsanitizer.new()
+            spec.assert_str_eq(htmlsanitizer.normalize(s, "<table><tr><td>x</td></tr></table>", ""),
+                "<table><tbody><tr><td>x</td></tr></tbody></table>",
+                "structure is normalize's job — that is the point of the split")
+            htmlsanitizer.free(s)
+        }
+    }
+
+    spec.describe(fw, "fragment vs document") {
+        spec.it("sanitize emits a FRAGMENT, unwrapping document structure") callback {
+            s = htmlsanitizer.new()
+            out = htmlsanitizer.sanitize(s,
+                "<html><head><title>T</title></head><body><div>Test</div></body></html>", "")
+            spec.assert_str_eq(out, "<div>Test</div>",
+                "the envelope goes; head content has no meaning without it")
+            htmlsanitizer.free(s)
+        }
+
+        spec.it("sanitize_document emits a DOCUMENT, adding structure") callback {
+            s = htmlsanitizer.new()
+            out = htmlsanitizer.sanitize_document(s, "<div>Test</div>", "")
+            spec.assert_str_eq(out, "<html><head></head><body><div>Test</div></body></html>",
+                "a bare fragment gains an envelope")
+            htmlsanitizer.free(s)
+        }
+
+        spec.it("sanitize_document does not nest a document in a document") callback {
+            s = htmlsanitizer.new()
+            // NB `title` is not in the DEFAULT allow-list, so the security
+            // pass drops it before the envelope is rebuilt. That is policy
+            // doing its job, not the wrapper losing content — allow it and it
+            // lands in <head>, which the next case pins.
+            out = htmlsanitizer.sanitize_document(s,
+                "<html><head><title>T</title></head><body><div>X</div></body></html>", "")
+            spec.assert_str_eq(out, "<html><head></head><body><div>X</div></body></html>",
+                "already-a-document passes through without nesting")
+            htmlsanitizer.free(s)
+        }
+
+        spec.it("puts head-only elements in the head when wrapping") callback {
+            s = htmlsanitizer.new()
+            set.add(s.allowed_tags, "title")
+            out = htmlsanitizer.sanitize_document(s, "<title>T</title><div>B</div>", "")
+            spec.assert_str_eq(out, "<html><head><title>T</title></head><body><div>B</div></body></html>",
+                "title to head, div to body")
+            htmlsanitizer.free(s)
+        }
+    }
+
+    spec.run_summary(fw)
+}

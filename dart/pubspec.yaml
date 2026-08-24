@@ -3,7 +3,7 @@ description: >-
   Clean HTML of constructs that can lead to XSS. A thin dart:ffi binding over
   the shared HtmlSanitizer native engine — no sanitizer logic lives in Dart.
 version: 0.1.0
-repository: https://github.com/paulhammant/html-sanitizer
+repository: https://github.com/paul-hammant/html-sanitizer
 
 environment:
   # NativeCallable.isolateLocal (used for every callback hook) needs 3.1+.

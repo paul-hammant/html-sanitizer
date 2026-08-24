@@ -1,0 +1,30 @@
+// normalize/sanitize separation + the removal report.
+//
+// Two jobs that used to be one. normalize() repairs structure and makes no
+// security judgement; sanitize() does that work AND filters, and now says
+// what it removed. The report is a pull API rather than callbacks-only
+// because the WASM and BEAM bindings cannot supply function pointers.
+
+import build
+import std.os
+
+aeb(cap) {
+    b = build.start()
+    root = build._get(b, "root")
+    out = "${root}/target/normalize_and_report"
+
+    _m = os.system("mkdir -p \"${root}/target\"")
+
+    rc = os.system("cd \"${root}\" && ae build core_tests/normalize_and_report.ae -o \"${out}\"")
+    if rc != 0 {
+        println("core_tests: failed to build normalize_and_report.ae")
+        return 1
+    }
+    rc2 = os.system("\"${out}\"")
+    if rc2 != 0 {
+        println("core_tests: normalize/report suite reported failures")
+        return 1
+    }
+    println("core_tests: PASS — normalize/sanitize split + removal report")
+    return 0
+}

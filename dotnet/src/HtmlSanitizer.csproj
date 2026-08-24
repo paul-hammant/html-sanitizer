@@ -50,7 +50,7 @@
       in C#.
     </Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <RepositoryUrl>https://github.com/paulhammant/html-sanitizer</RepositoryUrl>
+    <RepositoryUrl>https://github.com/paul-hammant/html-sanitizer</RepositoryUrl>
   </PropertyGroup>
 
 </Project>

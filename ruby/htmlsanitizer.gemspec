@@ -13,7 +13,7 @@ Gem::Specification.new do |spec|
     own — it only marshals values across the engine's C ABI, so every language
     binding in the monorepo behaves identically.
   DESC
-  spec.homepage = "https://github.com/paulhammant/html-sanitizer"
+  spec.homepage = "https://github.com/paul-hammant/html-sanitizer"
   spec.license = "MIT"
   spec.required_ruby_version = ">= 3.0.0"
 

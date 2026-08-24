@@ -42,6 +42,22 @@ fn deny(s: ptr, name: string, html: string, forbidden: string) -> int {
     return report(name, html, got, forbidden)
 }
 
+// Assert the sanitized output DOES contain `required` — the counter-check to
+// deny(). A sanitizer that strips everything passes every deny() test; these
+// are what stop a fix from over-blocking.
+fn keep(s: ptr, name: string, html: string, required: string) -> int {
+    got = htmlsanitizer.sanitize(s, html, "")
+    if string.contains(got, required) == 1 {
+        println("  PASS ${name}")
+        return 0
+    }
+    println("  FAIL ${name}")
+    println("    input:   ${html}")
+    println("    output:  ${got}")
+    println("    missing: ${required}")
+    return 1
+}
+
 // Same, with a base URL in play (URL resolution changes the path taken).
 fn deny_based(s: ptr, name: string, html: string, base: string, forbidden: string) -> int {
     got = htmlsanitizer.sanitize(s, html, base)
@@ -91,15 +107,24 @@ main() {
         "<a href=\"&#0000106;avascript:alert(1)\">x</a>", "alert")
 
     // ---- CSS-borne vectors ----
-    // KNOWN GAP: CSS expression() is not filtered. Only ever exploitable in
-    // IE <= 10 (removed in IE11/Edge), and upstream C# HtmlSanitizer leaves it
-    // to the configurable DisallowCssPropertyValue regex rather than a
-    // hardcoded rule — which this port has a field for
-    // (disallow_css_property_value_regex) but does not yet wire up. Left
-    // asserted-as-blocked deliberately: when the regex hook is wired, this
-    // line starts passing and tells us so.
-    f = f + deny(s, "expression() in style (KNOWN GAP, IE<=10)",
+    // Was a known gap; now closed. css_value_is_unsafe() applies upstream's
+    // two ALWAYS-ON checks (the CssExpression regex and the `[<>]` default of
+    // DisallowCssPropertyValue) without needing PCRE2 — which matters because
+    // regex is stubbed out in the --emit=lib builds.
+    f = f + deny(s, "expression() in style",
         "<div style=\"width: expression(alert(1))\">x</div>", "expression")
+    f = f + deny(s, "EXPRESSION uppercase",
+        "<div style=\"width: EXPRESSION(alert(1))\">x</div>", "EXPRESSION")
+    f = f + deny(s, "angle bracket in css value",
+        "<div style=\"background-color: url(<script>)\">x</div>", "<script")
+
+    // Counter-checks: ordinary CSS must survive the always-on value checks.
+    // NB the colour is NORMALISED to rgba(...) — matching AngleSharp, which
+    // upstream serializes through. Assert the colour survives, not its
+    // spelling.
+    f = f + keep(s, "hex colour kept", "<div style=\"color: #ff0000\">x</div>", "rgba(255, 0, 0, 1)")
+    f = f + keep(s, "calc kept", "<div style=\"width: calc(100% - 10px)\">x</div>", "calc(")
+    f = f + keep(s, "rgba kept", "<div style=\"color: rgba(1, 2, 3, 0.5)\">x</div>", "rgba(")
     f = f + deny(s, "javascript: in css url",
         "<div style=\"background-image: url(javascript:alert(1))\">x</div>", "javascript:")
     f = f + deny(s, "backslash-escaped css url",
@@ -132,6 +157,81 @@ main() {
     f = f + deny(s, "extra angle brackets", "<div><<>>onclick=alert(1)</div>", "<div onclick")
     f = f + deny(s, "cdata wrapped script", "<![CDATA[<script>alert(1)</script>]]>", "alert(1)</script>")
 
+    // ---- malformed / unparseable scheme (the "" ambiguity) ----
+    // get_scheme returns "" for BOTH a genuine relative URL and a value it
+    // could not parse. Treating them alike let a grave-accent-wrapped payload
+    // through: `javascript:` is not a parseable scheme, so it was waved past
+    // the allow-list as if it were "/page.html". is_plain_relative() splits
+    // the two — a colon before any /?# means the author wrote a SCHEME, and
+    // one we cannot identify is refused rather than trusted.
+    f = f + deny(s, "grave-accent wrapped javascript:",
+        "<IMG SRC=`javascript:alert(1)`>", "javascript:")
+    f = f + deny(s, "grave-accent in css url",
+        "<div style=\"background-image: url(`javascript:alert(1)`)\">x</div>", "javascript:")
+    f = f + deny(s, "parenthesis-wrapped scheme",
+        "<a href=\"(javascript:alert(1))\">x</a>", "javascript:")
+
+    // ...and the counter-check: ordinary relative URLs must still survive,
+    // including the ones with a colon AFTER a path separator.
+    f = f + keep(s, "relative path kept", "<a href=\"/ok/page\">x</a>", "/ok/page")
+    f = f + keep(s, "query with colon kept", "<a href=\"/s?q=a:b\">x</a>", "a:b")
+    f = f + keep(s, "fragment with colon kept", "<a href=\"#with:colon\">x</a>", "#with:colon")
+
+    // ---- entity obfuscation without the closing semicolon ----
+    // Browsers decode `&#x6a` and `&#0000106` to `j` with no `;`. Requiring
+    // the semicolon meant the decoded text never formed `javascript:`, so the
+    // scheme check never fired. Named entities stay semicolon-required — the
+    // set is open-ended and a bare `&amp` in prose is far more likely literal.
+    f = f + deny(s, "hex entities, no semicolons",
+        "<IMG SRC=&#x6a&#x61&#x76&#x61&#x73&#x63&#x72&#x69&#x70&#x74&#x3a;alert(1)>", "alert")
+    f = f + deny(s, "decimal entities, no semicolons",
+        "<IMG SRC=&#0000106&#0000097&#0000118&#0000097script:alert(1)>", "alert")
+
+    // Counter-checks: ordinary ampersands must not be eaten.
+    f = f + keep(s, "literal &amp; kept", "<p>Tom &amp; Jerry</p>", "&amp;")
+    f = f + keep(s, "bare ampersand kept", "<p>AT&T</p>", "&amp;")
+    f = f + keep(s, "hash in prose kept", "<p>issue #123</p>", "#123")
+
+    // ---- URL-list attributes (srcset / ping / archive) ----
+    // srcset holds MULTIPLE urls; screening only the first, or treating the
+    // whole value as one url, both fail. A bad candidate must be dropped
+    // without taking the good ones with it.
+    f = f + deny(s, "javascript: candidate in srcset",
+        "<img srcset=\"/ok.jpg 1x, javascript:alert(1) 2x\">", "javascript:")
+    f = f + deny(s, "payload disguised as a descriptor",
+        "<img srcset=\"/ok.jpg javascript:alert(1)\">", "javascript:")
+
+    // ---- expression() / url() obfuscation ----
+    // css_value_is_unsafe FOLDS the value before matching, because the naive
+    // contains("expression") is trivially evaded. Each of these was live.
+    f = f + deny(s, "expression split by css comment",
+        "<div style=\"width: e/**/xpression(alert(1))\">x</div>", "xpression")
+    f = f + deny(s, "expression via homoglyphs",
+        "<div style=\"top: expʀessɪoɴ(alert())\">x</div>", "alert")
+    f = f + deny(s, "url via homoglyphs",
+        "<div style=\"background-image: uʀʟ(javascript:alert())\">x</div>", "javascript")
+
+    // Counter-checks: legitimate Unicode in CSS must survive the fold.
+    f = f + keep(s, "fullwidth font name kept",
+        "<div style=\"font-family: 'Ｍｅｉｒｉｏ', sans-serif\">x</div>", "sans-serif")
+    f = f + keep(s, "unicode content kept",
+        "<div style=\"content: 'café ☃'\">x</div>", "café")
+
+    // ---- attribute-quote breakout ----
+    // html_escape stops escaping `'` in attribute values (attributes are
+    // always emitted double-quoted, so a single quote cannot terminate one).
+    // These pin that reasoning: neither quote form may break out, and an
+    // event handler must not materialise from a quote in a value.
+    // The property is that no NEW attribute is created — the payload must
+    // stay inside the value it was written in. Asserting the absence of
+    // "onmouseover=" would be wrong: it legitimately appears INSIDE the
+    // title value, inert, and a sanitizer is not required to strip it there.
+    // What must never appear is the tag-level form `" onmouseover=`.
+    f = f + deny(s, "single quote cannot close an attr",
+        "<a title=\"x' onmouseover='alert(1)\">y</a>", "\" onmouseover=")
+    f = f + deny(s, "double quote cannot close an attr",
+        "<a title='x\" onmouseover=\"alert(1)'>y</a>", "\" onmouseover=")
+
     // ---- protocol-relative and base-url interactions ----
     f = f + deny_based(s, "javascript: survives base resolution",
         "<a href=\"javascript:alert(1)\">x</a>", "https://example.com", "javascript:")
@@ -153,17 +253,11 @@ main() {
         "<form action=\"//evil.example\"><input></form>", "<input")
     htmlsanitizer.free(strict)
 
-    // The single known gap (CSS expression(), IE<=10 only) is expected to
-    // fail until the disallow-regex hook is wired. Anything MORE than that is
-    // a regression and fails the suite.
-    known_gaps = 1
+    // No known gaps: every vector in this file must be blocked.
+    known_gaps = 0
     if f > known_gaps {
         println("=== ${f} XSS vector(s) GOT THROUGH (${known_gaps} known) ===")
         exit(1)
     }
-    if f == known_gaps {
-        println("=== all XSS vectors blocked except ${known_gaps} known gap ===")
-    } else {
-        println("=== all XSS vectors blocked ===")
-    }
+    println("=== all XSS vectors blocked ===")
 }

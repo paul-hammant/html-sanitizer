@@ -470,7 +470,7 @@ test "extra sanitize_document is wired" {
     defer s.deinit();
     const out = try s.sanitizeDocument("<div>doc<script>x</script></div>", "");
     defer alloc.free(out);
-    try testing.expectEqualStrings("<div>doc</div>", out);
+    try testing.expectEqualStrings("<html><head></head><body><div>doc</div></body></html>", out);
 }
 
 test "extra allow_data_attributes flag" {
@@ -528,11 +528,13 @@ test "extra long input crosses the boundary intact" {
     const s = try hs.Sanitizer.init(alloc);
     defer s.deinit();
 
-    var html = std.ArrayList(u8).init(alloc);
-    defer html.deinit();
-    try html.appendSlice("<div>");
-    for (0..500) |_| try html.appendSlice("<span>x</span>");
-    try html.appendSlice("<script>evil()</script></div>");
+    // Zig 0.16's ArrayList is unmanaged: no .init(alloc), and the allocator
+    // is threaded through every mutating call.
+    var html: std.ArrayList(u8) = .empty;
+    defer html.deinit(alloc);
+    try html.appendSlice(alloc, "<div>");
+    for (0..500) |_| try html.appendSlice(alloc, "<span>x</span>");
+    try html.appendSlice(alloc, "<script>evil()</script></div>");
 
     const out = try s.sanitize(html.items, "");
     defer alloc.free(out);

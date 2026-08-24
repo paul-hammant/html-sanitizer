@@ -40,7 +40,76 @@ aether_hs_embed_free(h);                               // release the handle
 | `free_string` | `void (char* s)` | frees any string this ABI returned |
 | `sanitize` | `char* (void* h, const char* html, const char* base_url)` | `base_url` may be `""` |
 | `sanitize_document` | `char* (void* h, const char* html, const char* base_url)` | |
+| `normalize` | `char* (void* h, const char* html, const char* base_url)` | structural repair only — removes nothing |
 | `abi_version` | `int ()` | currently `1` |
+
+## Baselines
+
+| Symbol | Signature | Returns |
+|---|---|---|
+| `use_baseline` | `int (void* h, int baseline)` | 1 on success, 0 for an unknown id |
+
+| id | baseline |
+|---|---|
+| 0 | default web policy (a no-op — `new()` installs it) |
+| 1 | email-safe |
+
+A baseline names the OUTCOME rather than making a caller assemble it from
+forty setters. **Email-safe** drops form controls (a form in an email is a
+phishing primitive — it renders as a login box and posts wherever the author
+says), SVG, interactive/obsolete elements, and document structure; it keeps
+`a` and `img`, and adds `mailto:` to the scheme allow-list.
+
+It **replaces** the allow-lists rather than intersecting, so apply it *before*
+per-call configuration — anything added afterwards sticks, which is how a
+caller narrows further:
+
+```c
+aether_hs_embed_use_baseline(h, 1);          /* email-safe */
+aether_hs_embed_disallow(h, 0, "img");       /* ...and no images either */
+```
+
+A baseline only ever narrows the default policy; it never widens it.
+
+## Normalize vs sanitize
+
+Two separable jobs on one handle:
+
+- **`normalize`** parses, repairs structure (closes unclosed elements, fixes
+  nesting) and re-serializes canonically. It makes **no security judgement**:
+  `<script>` and `onclick` survive, and the removal report stays empty. Use it
+  when you want well-formed HTML and will apply your own policy.
+- **`sanitize`** does that structural work *and* filters by policy, then
+  records what it dropped.
+
+## Removal report
+
+What the last `sanitize` removed, and why. Read it after the call — the report
+describes that call, not the handle's history.
+
+| Symbol | Signature | Returns |
+|---|---|---|
+| `removal_count` | `int (void* h)` | number of entries |
+| `removal_reason` | `int (void* h, int i)` | a `REASON_*` constant, `-1` out of range |
+| `removal_name` | `char* (void* h, int i)` | `"script"`, `"onclick"`, `"#comment"` |
+| `removal_detail` | `char* (void* h, int i)` | what it contained, truncated to 200 bytes |
+
+```c
+char* clean = aether_hs_embed_sanitize(h, html, "");
+for (int i = 0; i < aether_hs_embed_removal_count(h); i++) {
+    char* name = aether_hs_embed_removal_name(h, i);
+    char* what = aether_hs_embed_removal_detail(h, i);
+    /* e.g. name="script", what="alert(1)" */
+    aether_hs_embed_free_string(name);
+    aether_hs_embed_free_string(what);
+}
+```
+
+This is a **pull** API rather than only the `on_removing_*` callbacks on
+purpose: the WASM and BEAM bindings cannot hand the engine a function pointer
+at all, and a caller who wants a summary rather than the ability to *cancel* a
+removal should not have to install a hook to get one. The callbacks remain the
+way to intervene; the report is the way to observe.
 
 ## Flags
 

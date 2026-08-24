@@ -1,42 +1,61 @@
-// Kotlin binding tests.
+// Kotlin layer: a thin idiomatic wrapper over the JAVA binding's classes —
+// there is no second native FFI here. Compile the Kotlin sources against
+// those classes, then run the conformance suite.
 //
-// The Kotlin layer is NOT a second FFI: it compiles against the Java binding's
-// classes (build.dep java/.build.ae -> "classes_dir") and reaches the engine
-// through them. So this node deps BOTH java/.build.ae (for the classpath) and
-// core/.build.ae (for the .so that HTMLSANITIZER_LIB points at).
+// Replaces a 108-line run-tests.sh. aeb's kotlin SDK owns what that script
+// existed for:
 //
-// Toolchain note. The suite needs a Kotlin compiler that can READ the Java
-// binding's class files. Those are JDK 22+ bytecode, because the FFM API this
-// whole monorepo binds through is only available from 22 — so a Kotlin
-// compiler older than roughly 1.9 cannot parse them at all (its bundled ASM
-// rejects the class-file major version) and the compile fails with
-// "Unsupported class file major version". kotlin/find-kotlinc.sh picks the
-// newest capable compiler it can find and prints how to run it; if there is
-// none, this node SKIPS rather than reporting a false pass.
+//   - A real toolchain VETO, not a "is kotlinc on PATH" check. Debian ships
+//     kotlinc 1.3, which cannot read the JDK 22+ bytecode this binding needs
+//     (the Java layer is FFM/Panama) and only runs under JDK 17 itself. The
+//     SDK verifies the compiler rather than trusting PATH, and SKIPs (green,
+//     skip-counted) when nothing capable is found.
+//   - min_jdk(22) gates the RUN step for the same reason.
+//   - kotlin-stdlib on the run classpath, resolved from the SAME install as
+//     the verified compiler — a 2.x compiler paired with a stale PATH-kotlinc
+//     stdlib is the subtle failure this avoids.
+//
+// If no capable Kotlin is installed here, point KOTLIN_HOME at one. It must be
+// a real kotlinc layout: <home>/bin/kotlinc + <home>/lib/kotlin-stdlib.jar.
+// Assembling one from a Gradle distribution's embeddable compiler works, but
+// the compiler jar alone is not enough — it also needs kotlinx-coroutines-core-jvm,
+// trove4j and annotations alongside the stdlib, or it dies at COMPILE time with
+// ClassNotFoundException: kotlinx.coroutines.CoroutineScope, which reads as a
+// compiler bug rather than a missing fixture jar.
+
 import build
-import std.os
+import kotlin
+import kotlin (min_jdk, source_layout)
+// jvm_args lives in lib/java (the JVM-common setters), not lib/kotlin.
+import java (jvm_args)
 
 aeb(cap) {
     b = build.start()
     build.dep(b, "core/.build.ae")
     build.dep(b, "java/.build.ae")
     lib = build.dep_artifact(b, "core/.build.ae", "shared_lib")
-    classes = build.dep_artifact(b, "java/.build.ae", "classes_dir")
-    root = build._get(b, "root")
 
-    out = "${root}/target/.aeb/kotlin-classes"
+    // Three builders, in order. The classpath comes from java/.build.ae's
+    // standard JVM artifact via the dep edge, so nothing is hardcoded.
+    //
+    // source_layout("maven idiomatic") is required on BOTH compile steps:
+    // without it they glob flat in the module root, find nothing, and report
+    // "no Kotlin source files found" while returning success.
+    kotlin.kotlinc(b) {                    // src/main/kotlin -> the wrapper
+        source_layout("maven idiomatic")
+    }
+    kotlin.kotlinc_test(b) {               // src/test/kotlin -> the suite
+        source_layout("maven idiomatic")
+    }
 
-    rc = os.system("cd \"${root}/kotlin\" && HS_JAVA_CLASSES=\"${classes}\" HS_OUT=\"${out}\" HTMLSANITIZER_LIB=\"${lib}\" ./run-tests.sh")
-    if rc == 77 {
-        // 77 is this monorepo's "toolchain absent" code, chosen because no
-        // compiler or JVM uses it for a real failure.
-        println("kotlin: SKIPPED — no Kotlin compiler able to read JDK 22+ bytecode")
-        return 0
+    // The engine .so is dlopened by the Java layer at run time, so the JVM
+    // needs to find it. build's env() does NOT reach these builders — it
+    // stores under `proc_env`, which only the *project* builders drain — so
+    // the path goes in as a system property, which Native.java reads
+    // alongside $HTMLSANITIZER_LIB.
+    kotlin.kotlin_test(b, "org.htmlsanitizer.kotlin.ConformanceTest") {
+        min_jdk(22)
+        jvm_args("--enable-native-access=ALL-UNNAMED")
+        jvm_args("-Dhtmlsanitizer.lib=${lib}")
     }
-    if rc != 0 {
-        println("kotlin: conformance suite reported failures")
-        return 1
-    }
-    println("kotlin: PASS — 12-check conformance + callback shapes")
-    return 0
 }

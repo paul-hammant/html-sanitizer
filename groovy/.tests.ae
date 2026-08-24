@@ -1,7 +1,7 @@
 // Groovy binding tests.
 //
 // The Groovy layer is NOT a second FFI: it compiles against the Java binding's
-// classes (build.dep java/.build.ae -> "classes_dir") and reaches the engine
+// classes (build.dep java/.build.ae -> the standard JVM classpath artifact) and reaches the engine
 // through them. So this node deps BOTH java/.build.ae (for the classpath) and
 // core/.build.ae (for the .so that HTMLSANITIZER_LIB points at).
 //
@@ -19,7 +19,7 @@ aeb(cap) {
     build.dep(b, "core/.build.ae")
     build.dep(b, "java/.build.ae")
     lib = build.dep_artifact(b, "core/.build.ae", "shared_lib")
-    classes = build.dep_artifact(b, "java/.build.ae", "classes_dir")
+    classes = build.dep_artifact(b, "java/.build.ae", "jvm_classpath_deps_including_transitive")
     root = build._get(b, "root")
 
     out = "${root}/target/.aeb/groovy-classes"

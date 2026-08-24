@@ -1,0 +1,1365 @@
+// Parity suite: Michael Ganss's C# HtmlSanitizer tests, ported to std.spec.
+//
+// GENERATED — do not hand-edit. Regenerate with the porter in the repo's
+// tooling (see docs/ganss-parity.md), which reads
+// ../HtmlSanitizer/test/HtmlSanitizer.Tests/Tests.cs and translates every
+// test whose whole body it understands.
+//
+// Why generate rather than hand-port: upstream has 252 [Fact]s + 18
+// [Theory]s encoding a decade of XSS bypass reports. Hand-copying them
+// invites transcription errors in exactly the strings where a wrong byte
+// silently weakens a security test.
+//
+// The porter is deliberately CONSERVATIVE. A test is emitted only when its
+// input, its configuration and its expectation are all resolvable to
+// literals; anything else is skipped WITH A REASON rather than guessed at,
+// so this file can never claim coverage it does not have. The skip manifest
+// (count and reasons) is in docs/ganss-parity.md.
+//
+// Portions copyright (c) 2013-2016 Michael Ganss and the original C#
+// HtmlSanitizer contributors (MIT) — these test vectors are theirs.
+
+import core.htmlsanitizer
+import core.htmlsanitizer (HtmlSanitizer)
+import std.spec
+import std.set
+import std.string
+import std.regex
+
+// Case-insensitive compare, for the upstream asserts that pass
+// `ignoreCase: true`. Those tests care about the sanitizing decision, not
+// the emitter's tag/attribute casing.
+fn eq_ci(actual: string, expected: string) -> bool {
+    return string.to_lower(actual) == string.to_lower(expected)
+}
+
+main() {
+    fw = spec.init()
+    spec.describe(fw, "Ganss C# HtmlSanitizer parity") {
+        spec.it("XssLocatorTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<a href=\"'';!--\"<XSS>=&{()}\">", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<a href=\"'';!--\">=&amp;{()}\"&gt;</a>"),
+                "XssLocatorTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("ImageXss1Test") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<IMG SRC=\"javascript:alert('XSS');\">", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<img>"),
+                "ImageXss1Test (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("ImageXss2Test") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<IMG SRC=javascript:alert('XSS')>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<IMG>"),
+                "ImageXss2Test (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("ImageCaseInsensitiveXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<IMG SRC=JaVaScRiPt:alert('XSS')>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<IMG>"),
+                "ImageCaseInsensitiveXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("ImageHtmlEntitiesXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<IMG SRC=javascript:alert(&quot;XSS&quot;)>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<IMG>"),
+                "ImageHtmlEntitiesXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("ImageGraveAccentXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<IMG SRC=`javascript:alert(\"RSnake says, 'XSS'\")`>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<img>"),
+                "ImageGraveAccentXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("ImageMalformedXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<IMG \"\"\"><SCRIPT>alert(\"XSS\")</SCRIPT>\">", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<img>\"&gt;"),
+                "ImageMalformedXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("ImageFromCharCodeXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<IMG SRC=javascript:alert(String.fromCharCode(88,83,83))>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<img>"),
+                "ImageFromCharCodeXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("ImageUTF8UnicodeXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<IMG SRC=&#106;&#97;&#118;&#97;&#115;&#99;&#114;&#105;&#112;&#116;&#58;&#97;&#108;&#101;&#114;&#116;&#40;&#39;&#88;&#83;&#83;&#39;&#41;>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<img>"),
+                "ImageUTF8UnicodeXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("ImageLongUTF8UnicodeXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<IMG SRC=&#0000106&#0000097&#0000118&#0000097&#0000115&#0000099&#0000114&#0000105&#0000112&#0000116&#0000058&#0000097&#0000108&#0000101&#0000114&#0000116&#0000040&#0000039&#0000088&#0000083&#0000083&#0000039&#0000041>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<img>"),
+                "ImageLongUTF8UnicodeXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("ImageHexEncodeXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<IMG SRC=&#x6A&#x61&#x76&#x61&#x73&#x63&#x72&#x69&#x70&#x74&#x3A&#x61&#x6C&#x65&#x72&#x74&#x28&#x27&#x58&#x53&#x53&#x27&#x29>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<img>"),
+                "ImageHexEncodeXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("ImageEmbeddedTabXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<IMG SRC=\"jav\tascript:alert('XSS');\">", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<img>"),
+                "ImageEmbeddedTabXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("ImageEmbeddedEncodedTabXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<IMG SRC=\"jav&#x09;ascript:alert('XSS');\">", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<img>"),
+                "ImageEmbeddedEncodedTabXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("ImageEmbeddedNewLineXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<IMG SRC=\"jav&#x0A;ascript:alert('XSS');\">", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<img>"),
+                "ImageEmbeddedNewLineXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("ImageEmbeddedCarriageReturnXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<IMG SRC=\"jav&#x0D;ascript:alert('XSS');\">", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<img>"),
+                "ImageEmbeddedCarriageReturnXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("ImageMultilineInjectedXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<IMG\nSRC\n=\n\"\nj\na\nv\na\ns\nc\nr\ni\np\nt\n:\na\nl\ne\nr\nt\n(\n'\nX\nS\nS\n'\n)\n\"\n>\n", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<img>\n"),
+                "ImageMultilineInjectedXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("ImageSpaceAndMetaCharXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<IMG SRC=\" &#14;  javascript:alert('XSS');\">", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<img>"),
+                "ImageSpaceAndMetaCharXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("ImageHalfOpenHtmlXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<IMG SRC=\"javascript:alert('XSS')\"", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower(""),
+                "ImageHalfOpenHtmlXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("ImageDoubleOpenAngleBracketXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<image src=http://ha.ckers.org/scriptlet.html <", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower(""),
+                "ImageDoubleOpenAngleBracketXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("DivJavascriptEscapingXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<div style=\"\";alert('XSS');//\">", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div style=\"\"></div>"),
+                "DivJavascriptEscapingXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("ImageInputXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<INPUT TYPE=\"IMAGE\" SRC=\"javascript:alert('XSS');\">", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<input type=\"image\">"),
+                "ImageInputXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("ImageDynsrcXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<IMG DYNSRC=\"javascript:alert('XSS')\">", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<img>"),
+                "ImageDynsrcXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("ImageLowsrcXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<IMG LOWSRC=\"javascript:alert('XSS')\">", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<img>"),
+                "ImageLowsrcXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("BGSoundXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<BGSOUND SRC=\"javascript:alert('XSS');\">", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower(""),
+                "BGSoundXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("BRJavascriptIncludeXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<BR SIZE=\"&{alert('XSS')}\">", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<BR>"),
+                "BRJavascriptIncludeXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("PWithUrlInStyleXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<p STYLE=\"behavior: url(www.ha.ckers.org);\">", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<p></p>"),
+                "PWithUrlInStyleXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("ImageWithVBScriptXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<IMG SRC='vbscript:msgbox(\"XSS\")'>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<img>"),
+                "ImageWithVBScriptXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("ImageWithMochaXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<IMG SRC=\"mocha:[code]\">", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<img>"),
+                "ImageWithMochaXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("ImageWithLivescriptXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<IMG SRC=\"Livescript:[code]\">", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<img>"),
+                "ImageWithLivescriptXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("IframeXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<IFRAME SRC=\"javascript:alert('XSS');\"></IFRAME>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower(""),
+                "IframeXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("FrameXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<FRAMESET><FRAME SRC=\"javascript:alert('XSS');\"></FRAMESET>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower(""),
+                "FrameXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("TableXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<TABLE BACKGROUND=\"javascript:alert('XSS')\">", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<table></table>"),
+                "TableXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("TDXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<TABLE><TD BACKGROUND=\"javascript:alert('XSS')\">", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<table><tbody><tr><td></td></tr></tbody></table>"),
+                "TDXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("DivBackgroundImageXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<DIV STYLE=\"background-image: url(javascript:alert('XSS'))\">", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div></div>"),
+                "DivBackgroundImageXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("DivBackgroundImageWithUnicodedXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<DIV STYLE=\"background-image:\\0075\\0072\\006C\\0028'\\006a\\0061\\0076\\0061\\0073\\0063\\0072\\0069\\0070\\0074\\003a\\0061\\006c\\0065\\0072\\0074\\0028\\0027\\0058\\0053\\0053\\0027\\0029'\\0029\">", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div></div>"),
+                "DivBackgroundImageWithUnicodedXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("DivBackgroundImageWithExtraCharactersXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<DIV STYLE=\"background-image: url(&#1;javascript:alert('XSS'))\">", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div></div>"),
+                "DivBackgroundImageWithExtraCharactersXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("DivExpressionXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<DIV STYLE=\"width: expression(alert('XSS'));\">", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div></div>"),
+                "DivExpressionXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("ImageStyleExpressionXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<IMG STYLE=\"xss:expr/*XSS*/ession(alert('XSS'))\">", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<img>"),
+                "ImageStyleExpressionXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("AnchorTagStyleExpressionXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "exp/*<A STYLE='no\\xss:noxss(\"*//*\");xss:&#101;x&#x2F;*XSS*//*/*/pression(alert(\"XSS\"))'>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("exp/*<a></a>"),
+                "AnchorTagStyleExpressionXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("BaseTagXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<BASE HREF=\"javascript:alert('XSS');//\">", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower(""),
+                "BaseTagXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("EmbedTagXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<EMBED SRC=\"http://ha.ckers.org/xss.swf\" AllowScriptAccess=\"always\"></EMBED>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower(""),
+                "EmbedTagXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("EmbedSVGXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<EMBED SRC=\"data:image/svg+xml;base64,PHN2ZyB4bWxuczpzdmc9Imh0dH A6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcv MjAwMC9zdmciIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hs aW5rIiB2ZXJzaW9uPSIxLjAiIHg9IjAiIHk9IjAiIHdpZHRoPSIxOTQiIGhlaWdodD0iMjAw IiBpZD0ieHNzIj48c2NyaXB0IHR5cGU9InRleHQvZWNtYXNjcmlwdCI+YWxlcnQoIlh TUyIpOzwvc2NyaXB0Pjwvc3ZnPg==\" type=\"image/svg+xml\" AllowScriptAccess=\"always\"></EMBED>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower(""),
+                "EmbedSVGXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("XmlNamespaceXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<HTML xmlns:xss><?import namespace=\"xss\" implementation=\"http://ha.ckers.org/xss.htc\"><xss:xss>XSS</xss:xss></HTML>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower(""),
+                "XmlNamespaceXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("XmlWithCDataXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<XML ID=I><X><C><![CDATA[<IMG SRC=\"javas]]><![CDATA[cript:alert('XSS');\">]]></C></X></xml><SPAN DATASRC=#I DATAFLD=C DATAFORMATAS=HTML></SPAN>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<SPAN></SPAN>"),
+                "XmlWithCDataXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("XmlWithCommentObfuscationXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<XML ID=\"xss\"><I><B>&lt;IMG SRC=\"javas<!-- -->cript:alert('XSS')\"&gt;</B></I></XML><SPAN DATASRC=\"#xss\" DATAFLD=\"B\" DATAFORMATAS=\"HTML\"></SPAN>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<SPAN></SPAN>"),
+                "XmlWithCommentObfuscationXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("XmlWithEmbeddedScriptXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<XML SRC=\"xsstest.xml\" ID=I></XML><SPAN DATASRC=#I DATAFLD=C DATAFORMATAS=HTML></SPAN>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<SPAN></SPAN>"),
+                "XmlWithEmbeddedScriptXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("HtmlPlusTimeXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<HTML><BODY><?xml:namespace prefix=\"t\" ns=\"urn:schemas-microsoft-com:time\"><?import namespace=\"t\" implementation=\"#default#time2\"><t:set attributeName=\"innerHTML\" to=\"XSS&lt;SCRIPT DEFER&gt;alert(&quot;XSS&quot;)&lt;/SCRIPT&gt;\"></BODY></HTML>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower(""),
+                "HtmlPlusTimeXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("AnchorTagJavascriptLinkLocationXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<A HREF=\"javascript:document.location='http://www.google.com/'\">XSS</A>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<a>XSS</a>"),
+                "AnchorTagJavascriptLinkLocationXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("DivNoFilterEvasionXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<Div style=\"background-color: http://www.codeplex.com?url=<SCRIPT SRC=http://ha.ckers.org/xss.js></SCRIPT>\">", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div></div>"),
+                "DivNoFilterEvasionXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("DivStyleExpressionNoFilterEvasionXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<Div style=\"background-color: expression(<SCRIPT SRC=http://ha.ckers.org/xss.js></SCRIPT>)\">", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div></div>"),
+                "DivStyleExpressionNoFilterEvasionXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("AnchorTagNonAlphaNonDigitXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<A HREF=\"http://www.codeplex.com?url=<SCRIPT/XSS SRC=\"http://ha.ckers.org/xss.js\"></SCRIPT>\">XSS</A>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<a href=\"http://www.codeplex.com?url=&lt;SCRIPT/XSS SRC=\">\"&gt;XSS</a>"),
+                "AnchorTagNonAlphaNonDigitXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("DivNonAlphaNonDigitXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<Div style=\"background-color: http://www.codeplex.com?url=<SCRIPT/XSS SRC=\"http://ha.ckers.org/xss.js\"></SCRIPT>\">", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div>\"&gt;</div>"),
+                "DivNonAlphaNonDigitXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("DivStyleExpressionNonAlphaNonDigitXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<Div style=\"background-color: expression(<SCRIPT/XSS SRC=\"http://ha.ckers.org/xss.js\"></SCRIPT>)\">", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div>)\"&gt;</div>"),
+                "DivStyleExpressionNonAlphaNonDigitXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("DivNonAlphaNonDigit3XssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<Div style=\"background-color: http://www.codeplex.com?url=<SCRIPT/SRC=\"http://ha.ckers.org/xss.js\"></SCRIPT>\">", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div>\"&gt;</div>"),
+                "DivNonAlphaNonDigit3XssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("DivStyleExpressionNonAlphaNonDigit3XssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<Div style=\"background-color: expression(<SCRIPT/SRC=\"http://ha.ckers.org/xss.js\"></SCRIPT>)\">", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div>)\"&gt;</div>"),
+                "DivStyleExpressionNonAlphaNonDigit3XssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("AnchorTagExtraneousOpenBracketsXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<A HREF=\"http://www.codeplex.com?url=<<SCRIPT>alert(\"XSS\");//<</SCRIPT>\">XSS</A>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<a href=\"http://www.codeplex.com?url=&lt;&lt;SCRIPT&gt;alert(\">\"&gt;XSS</a>"),
+                "AnchorTagExtraneousOpenBracketsXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("DivExtraneousOpenBracketsXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<Div style=\"background-color: http://www.codeplex.com?url=<<SCRIPT>alert(\"XSS\");//<</SCRIPT>\">", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div>\"&gt;</div>"),
+                "DivExtraneousOpenBracketsXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("DivStyleExpressionExtraneousOpenBracketsXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<Div style=\"background-color: expression(<<SCRIPT>alert(\"XSS\");//<</SCRIPT>)\">", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div>)\"&gt;</div>"),
+                "DivStyleExpressionExtraneousOpenBracketsXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("DivNoClosingScriptTagsXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<Div style=\"background-color: http://www.codeplex.com?url=<SCRIPT SRC=http://ha.ckers.org/xss.js?<B>\">", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div></div>"),
+                "DivNoClosingScriptTagsXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("DivStyleExpressionNoClosingScriptTagsXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<Div style=\"background-color: expression(<SCRIPT SRC=http://ha.ckers.org/xss.js?<B>)\">", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div></div>"),
+                "DivStyleExpressionNoClosingScriptTagsXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("AnchorTagProtocolResolutionScriptXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<A HREF=\"http://www.codeplex.com?url=<SCRIPT SRC=//ha.ckers.org/.j>\">XSS</A>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<a href=\"http://www.codeplex.com?url=&lt;SCRIPT SRC=//ha.ckers.org/.j&gt;\">XSS</a>"),
+                "AnchorTagProtocolResolutionScriptXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("DivProtocolResolutionScriptXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<Div style=\"background-color: http://www.codeplex.com?url=<SCRIPT SRC=//ha.ckers.org/.j>\">", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div></div>"),
+                "DivProtocolResolutionScriptXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("DivStyleExpressionProtocolResolutionScriptXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<Div style=\"background-color: expression(<SCRIPT SRC=//ha.ckers.org/.j>)\">", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div></div>"),
+                "DivStyleExpressionProtocolResolutionScriptXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("AnchorTagNoQuotesXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<A HREF=\"http://www.codeplex.com?url=<SCRIPT>a=/XSS/alert(a.source)</SCRIPT>\">XSS</A>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<a href=\"http://www.codeplex.com?url=&lt;SCRIPT&gt;a=/XSS/alert(a.source)&lt;/SCRIPT&gt;\">XSS</a>"),
+                "AnchorTagNoQuotesXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("DivNoQuotesXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<Div style=\"background-color: http://www.codeplex.com?url=<SCRIPT>a=/XSS/alert(a.source)</SCRIPT>\">", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div></div>"),
+                "DivNoQuotesXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("DivStyleExpressionNoQuotesXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<Div style=\"background-color: expression(<SCRIPT>a=/XSS/alert(a.source)</SCRIPT>)\">", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div></div>"),
+                "DivStyleExpressionNoQuotesXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("AnchorTagUSASCIIEncodingXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<A HREF=\"http://www.codeplex.com?url=¼script¾alert(¢XSS¢)¼/script¾\">XSS</A>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<a href=\"http://www.codeplex.com?url=¼script¾alert(¢XSS¢)¼/script¾\">XSS</a>"),
+                "AnchorTagUSASCIIEncodingXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("AnchorTagDownlevelHiddenBlockXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<A HREF=\"http://www.codeplex.com?url=<!--[if gte IE 4]><SCRIPT>alert('XSS');</SCRIPT><![endif]-->\">XSS</A>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<a href=\"http://www.codeplex.com?url=&lt;!--[if gte IE 4]&gt;&lt;SCRIPT&gt;alert('XSS');&lt;/SCRIPT&gt;&lt;![endif]--&gt;\">XSS</a>"),
+                "AnchorTagDownlevelHiddenBlockXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("DivDownlevelHiddenBlockXssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<Div style=\"background-color: http://www.codeplex.com?url=<!--[if gte IE 4]><SCRIPT>alert('XSS');</SCRIPT><![endif]-->\">", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div></div>"),
+                "DivDownlevelHiddenBlockXssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("AnchorTagHtmlQuotesEncapsulation1XssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<A HREF=\"http://www.codeplex.com?url=<SCRIPT a=\">\" SRC=\"http://ha.ckers.org/xss.js\"></SCRIPT>\">XSS</A>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<a href=\"http://www.codeplex.com?url=&lt;SCRIPT a=\">\" SRC=\"http://ha.ckers.org/xss.js\"&gt;\"&gt;XSS</a>"),
+                "AnchorTagHtmlQuotesEncapsulation1XssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("DivHtmlQuotesEncapsulation1XssTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<Div style=\"background-color: http://www.codeplex.com?url=<SCRIPT a=\">\" SRC=\"http://ha.ckers.org/xss.js\"></SCRIPT>\">", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div>\" SRC=\"http://ha.ckers.org/xss.js\"&gt;\"&gt;</div>"),
+                "DivHtmlQuotesEncapsulation1XssTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("LegalTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<div style=\"background-color: test\">", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div></div>"),
+                "LegalTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("MoreLegalTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<div style=\"background-color: test;\">Test<img src=\"http://www.example.com/test.gif\" style=\"background-image: url(http://www.example.com/bg.jpg); margin: 10px\"></div>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div>Test<img src=\"http://www.example.com/test.gif\" style=\"background-image: url(&quot;http://www.example.com/bg.jpg&quot;); margin: 10px\"></div>"),
+                "MoreLegalTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("DisallowedTagTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<bla>Hallo</bla>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower(""),
+                "DisallowedTagTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("DisallowedAttributeTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<div bla=\"test\">Test</div>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div>Test</div>"),
+                "DisallowedAttributeTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("UrlAttributeTest_1") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<a href=\"mailto:test@example.com\">test</a>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<a>test</a>"),
+                "UrlAttributeTest_1 (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("UrlAttributeTest_2") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<a href=\"http:xxx\">test</a>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<a href=\"http:xxx\">test</a>"),
+                "UrlAttributeTest_2 (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("UrlAttributeTest_3") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<a href=\"folder/file.jpg\">test</a>", "http://www.example.com")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<a href=\"http://www.example.com/folder/file.jpg\">test</a>"),
+                "UrlAttributeTest_3 (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("CiteAndLongdescResolveAgainstBaseUrlTest_1") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<blockquote cite=\"a\">x</blockquote>", "http://www.example.com")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<blockquote cite=\"http://www.example.com/a\">x</blockquote>"),
+                "CiteAndLongdescResolveAgainstBaseUrlTest_1 (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("CiteAndLongdescResolveAgainstBaseUrlTest_2") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<img longdesc=\"a\" src=\"y\">", "http://www.example.com")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<img longdesc=\"http://www.example.com/a\" src=\"http://www.example.com/y\">"),
+                "CiteAndLongdescResolveAgainstBaseUrlTest_2 (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("DisallowedStyleTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<div style=\"margin: 8px; bla: 1px\">test</div>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div style=\"margin: 8px\">test</div>"),
+                "DisallowedStyleTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeUnchangedTest_1") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<a href=\"#\">fo<br />o</a>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<a href=\"#\">fo<br>o</a>"),
+                "SanitizeUnchangedTest_1 (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeUnchangedTest_2") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<a href=\"#with:colon\">foo</a>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<a href=\"#with:colon\">foo</a>"),
+                "SanitizeUnchangedTest_2 (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeEntityrefTextTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<a href=\"#\">fo&ouml;</a>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<a href=\"#\">foö</a>"),
+                "SanitizeEntityrefTextTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeEscapeAttrTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<div title=\"&lt;foo&gt;\"></div>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div title=\"&lt;foo&gt;\"></div>"),
+                "SanitizeEscapeAttrTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeCloseEmptyTagTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<a href=\"#\">fo<br>o</a>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<a href=\"#\">fo<br>o</a>"),
+                "SanitizeCloseEmptyTagTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeInvalidEntityTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "&junk;", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("&amp;junk;"),
+                "SanitizeInvalidEntityTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeRemoveScriptElemTest_1") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<script>alert(\"Foo\")</script>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower(""),
+                "SanitizeRemoveScriptElemTest_1 (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeRemoveScriptElemTest_2") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<SCRIPT SRC=\"http://example.com/\"></SCRIPT>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower(""),
+                "SanitizeRemoveScriptElemTest_2 (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeRemoveOnclickAttrTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<div onclick=\\'alert(\"foo\")\\' />", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div></div>"),
+                "SanitizeRemoveOnclickAttrTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeRemoveCommentsTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<div><!-- conditional comment crap --></div>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div></div>"),
+                "SanitizeRemoveCommentsTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeRemoveStyleScriptsKeepsOtherDeclarationsTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<DIV STYLE='background-image: url(javascript:alert(\"foo\"));color: #fff'>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div style=\"color: rgba(255, 255, 255, 1)\"></div>"),
+                "SanitizeRemoveStyleScriptsKeepsOtherDeclarationsTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeExpressionTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<div style=\"top:expression(alert())\">XSS</div>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div>XSS</div>"),
+                "SanitizeExpressionTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("CapitalExpressionTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<div style=\"top:EXPRESSION(alert())\">XSS</div>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div>XSS</div>"),
+                "CapitalExpressionTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeUrlWithJavascriptTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<div style=\"background-image:url(javascript:alert())\">XSS</div>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div>XSS</div>"),
+                "SanitizeUrlWithJavascriptTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeCapitalUrlWithJavascriptTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<div style=\"background-image:URL(javascript:alert())\">XSS</div>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div>XSS</div>"),
+                "SanitizeCapitalUrlWithJavascriptTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeUnicodeEscapesTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<div style=\"top:exp\\72 ess\\000069 on(alert())\">XSS</div>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div>XSS</div>"),
+                "SanitizeUnicodeEscapesTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeBackslashWithoutHexTest_1") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<div style=\"top:e\\xp\\ression(alert())\">XSS</div>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div>XSS</div>"),
+                "SanitizeBackslashWithoutHexTest_1 (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeBackslashWithoutHexTest_2") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<div style=\"top:e\\\\xp\\\\ression(alert())\">XSS</div>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div>XSS</div>"),
+                "SanitizeBackslashWithoutHexTest_2 (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeCssHackTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<div style=\"*position:static\">XSS</div>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div>XSS</div>"),
+                "SanitizeCssHackTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizePropertyNameTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<div style=\"display:none;border-left-color:red;userDefined:1;-moz-user-selct:-moz-all\">prop</div>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div style=\"display: none; border-left-color: rgba(255, 0, 0, 1)\">prop</div>"),
+                "SanitizePropertyNameTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeUnicodeUrlTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<div style=\"background-image:uʀʟ(javascript:alert())\">XSS</div>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div>XSS</div>"),
+                "SanitizeUnicodeUrlTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("ProtocolRelativeTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<a href=\"//www.example.com/test\">Test</a>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<a href=\"//www.example.com/test\">Test</a>"),
+                "ProtocolRelativeTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("JavaScriptIncludeAndAngleBracketsTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<BR SIZE=\"&{alert('XSS&gt;')}\">", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<BR>"),
+                "JavaScriptIncludeAndAngleBracketsTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("AllowDataAttributesTest") callback {
+            s = htmlsanitizer.new()
+            s.allow_data_attributes = true
+            actual = htmlsanitizer.sanitize(s, "<div data-test1=\"value x\"></div>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div data-test1=\"value x\"></div>"),
+                "AllowDataAttributesTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("AllowDataAttributesCaseTest") callback {
+            s = htmlsanitizer.new()
+            s.allow_data_attributes = true
+            actual = htmlsanitizer.sanitize(s, "<div DAta-test1=\"value x\"></div>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div DAta-test1=\"value x\"></div>"),
+                "AllowDataAttributesCaseTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("AllowDataAttributesOffTest") callback {
+            s = htmlsanitizer.new()
+            s.allow_data_attributes = false
+            actual = htmlsanitizer.sanitize(s, "<div data-test1=\"value x\"></div>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div></div>"),
+                "AllowDataAttributesOffTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeNonClosedTagTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<div>Hallo <p><b>Bold<br>Ballo", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div>Hallo <p><b>Bold<br>Ballo</b></p></div>"),
+                "SanitizeNonClosedTagTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("DisallowCssPropertyValueTest") callback {
+            s = htmlsanitizer.new()
+            rx, _rxe = regex.compile("^rgba\\(0.*")
+            s.disallow_css_property_value_regex = rx
+            actual = htmlsanitizer.sanitize(s, "<div style=\"color: rgba(0, 0, 0, 1); background-color: rgba(255, 255, 255, 1)\">Test</div>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div style=\"background-color: rgba(255, 255, 255, 1)\">Test</div>"),
+                "DisallowCssPropertyValueTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("CssKeyTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<div style=\"\\000062ackground-image: URL(http://www.example.com/bg.jpg)\">Test</div>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div style=\"background-image: url(&quot;http://www.example.com/bg.jpg&quot;)\">Test</div>"),
+                "CssKeyTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("InvalidBaseUrlTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<div style=\"color: rgba(0, 0, 0, 1); background-image: URL(x/y/bg.jpg)\">Test</div>", "hallo")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div style=\"color: rgba(0, 0, 0, 1)\">Test</div>"),
+                "InvalidBaseUrlTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("QuotedBackgroundImageTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<div style=\"background-image: url('some/random/url.img')\"></div>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div style=\"background-image: url(&quot;some/random/url.img&quot;)\"></div>"),
+                "QuotedBackgroundImageTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("QuotedBackgroundImageFromIE9") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<span style='background-image: url(\"/api/users/defaultAvatar\");'></span>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<span style=\"background-image: url(&quot;/api/users/defaultAvatar&quot;)\"></span>"),
+                "QuotedBackgroundImageFromIE9 (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("DocumentTest") callback {
+            s = htmlsanitizer.new()
+            set.add(s.allowed_tags, "title")
+            actual = htmlsanitizer.sanitize_document(s, "<html><head><title>Test</title></head><body><div>Test</div></body></html>", "")
+            spec.assert_str_eq(actual, "<html><head><title>Test</title></head><body><div>Test</div></body></html>", "DocumentTest")
+            htmlsanitizer.free(s)
+        }
+        spec.it("DocumentFromFragmentTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize_document(s, "<div>Test</div>", "")
+            spec.assert_str_eq(actual, "<html><head></head><body><div>Test</div></body></html>", "DocumentFromFragmentTest")
+            htmlsanitizer.free(s)
+        }
+        spec.it("FragmentFromDocumentTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<html><head><title>Test</title></head><body><div>Test</div></body></html>", "")
+            spec.assert_str_eq(actual, "<div>Test</div>", "FragmentFromDocumentTest")
+            htmlsanitizer.free(s)
+        }
+        spec.it("StyleTagTest") callback {
+            s = htmlsanitizer.new()
+            set.add(s.allowed_tags, "style")
+            actual = htmlsanitizer.sanitize_document(s, "<html><head><style>body { background-color: rgba(255, 255, 255, 1); hallo-ballo: xyz }</style></head><body><div>Test</div></body></html>", "")
+            spec.assert_str_eq(actual, "<html><head><style>body { background-color: rgba(255, 255, 255, 1) }</style></head><body><div>Test</div></body></html>", "StyleTagTest")
+            htmlsanitizer.free(s)
+        }
+        spec.it("UriHashTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<a href=\"http://domain.com/index.html?test=#value#\">test</a>", "")
+            spec.assert_str_eq(actual, "<a href=\"http://domain.com/index.html?test=#value#\">test</a>", "UriHashTest")
+            htmlsanitizer.free(s)
+        }
+        spec.it("FragmentTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<script>alert('test');</script><p>Test</p>", "")
+            spec.assert_str_eq(actual, "<p>Test</p>", "FragmentTest")
+            htmlsanitizer.free(s)
+        }
+        spec.it("OpenTagFragmentTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<p>abc<script>xyz</p>", "")
+            spec.assert_str_eq(actual, "<p>abc</p>", "OpenTagFragmentTest")
+            htmlsanitizer.free(s)
+        }
+        spec.it("NullStyleTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<p style=\"t\">xyz</p>", "")
+            spec.assert_str_eq(actual, "<p>xyz</p>", "NullStyleTest")
+            htmlsanitizer.free(s)
+        }
+        spec.it("EscapeEntityInAttributeValueTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<input type=\"text\" name=\"my_name\" value=\"<insert name>\">", "")
+            spec.assert_str_eq(actual, "<input type=\"text\" name=\"my_name\" value=\"&lt;insert name&gt;\">", "EscapeEntityInAttributeValueTest")
+            htmlsanitizer.free(s)
+        }
+        spec.it("FontFaceTest") callback {
+            s = htmlsanitizer.new()
+            s.allow_data_attributes = true
+            set.add(s.allowed_tags, "style")
+            set.add(s.allowed_css_properties, "src")
+            set.add(s.allowed_css_properties, "font-family")
+            actual = htmlsanitizer.sanitize_document(s, "<html><head><style>@font-face { font-family: FrutigerLTStd; src: url(\"https://example.com/FrutigerLTStd-Light.otf\") format(\"opentype\") }</style></head><body></body></html>", "")
+            spec.assert_str_eq(actual, "<html><head><style>@font-face { font-family: FrutigerLTStd; src: url(\"https://example.com/FrutigerLTStd-Light.otf\") format(\"opentype\") }</style></head><body></body></html>", "FontFaceTest")
+            htmlsanitizer.free(s)
+        }
+        spec.it("KeepChildNodesTest") callback {
+            s = htmlsanitizer.new()
+            set.remove(s.allowed_tags, "div")
+            actual = htmlsanitizer.sanitize(s, "Test1 <div>Test2 <script>Test3</script> <b>Test4</b></div>", "")
+            spec.assert_str_eq(actual, "Test1 Test2 Test3 <b>Test4</b>", "KeepChildNodesTest")
+            htmlsanitizer.free(s)
+        }
+        spec.it("TrailingSlashTest") callback {
+            s = htmlsanitizer.new()
+            set.add(s.allowed_schemes, "resources")
+            actual = htmlsanitizer.sanitize(s, "<IMG src=\"resources://ais_w20_h20_33ba129c.png\">", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<IMG src=\"resources://ais_w20_h20_33ba129c.png\">"),
+                "TrailingSlashTest (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("FileUrlTest") callback {
+            s = htmlsanitizer.new()
+            set.add(s.allowed_schemes, "file")
+            actual = htmlsanitizer.sanitize(s, "<a href=\"file:///C:/exampleㄓ.txt\">test</a>", "")
+            spec.assert_str_eq(actual, "<a href=\"file:///C:/exampleㄓ.txt\">test</a>", "FileUrlTest")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SvgTest") callback {
+            s = htmlsanitizer.new()
+            set.add(s.allowed_tags, "svg")
+            actual = htmlsanitizer.sanitize(s, "<svg onchange='alert(1)'>123</svg>", "")
+            spec.assert_str_eq(actual, "<svg>123</svg>", "SvgTest")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SquareBracketTest") callback {
+            s = htmlsanitizer.new()
+            set.add(s.allowed_attributes, "[minutes]")
+            actual = htmlsanitizer.sanitize(s, "<div [minutes]=\"2\">123</div>", "")
+            spec.assert_str_eq(actual, "<div [minutes]=\"2\">123</div>", "SquareBracketTest")
+            htmlsanitizer.free(s)
+        }
+        spec.it("HtmlDocumentTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize_document(s, "<html onmousemove=\"alert(document.location)\"><head></head><body></body></html>", "")
+            spec.assert_str_eq(actual, "<html><head></head><body></body></html>", "HtmlDocumentTest")
+            htmlsanitizer.free(s)
+        }
+        spec.it("StyleByPassTest") callback {
+            s = htmlsanitizer.new()
+            set.add(s.allowed_tags, "style")
+            actual = htmlsanitizer.sanitize(s, "aaabc<style>x[x='\\3c /style>\\3c img src onerror=alert(1)>']{}</style>", "http://www.example.com")
+            spec.assert_str_eq(actual, "aaabc<style>x[x=\"\\3c /style>\\3c img src onerror=alert(1)>\"] { }</style>", "StyleByPassTest")
+            htmlsanitizer.free(s)
+        }
+        spec.it("Number263Test") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<div style=\"width: calc((600px - 300px) / 2)\">Test</div>", "")
+            spec.assert_str_eq(actual, "<div style=\"width: calc((600px - 300px) / 2)\">Test</div>", "Number263Test")
+            htmlsanitizer.free(s)
+        }
+        spec.it("Number272Test") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<span style='grid-template-areas: none; grid-template-columns: none; grid-template-rows: none'>", "")
+            spec.assert_str_eq(actual, "<span style=\"grid-template: none\"></span>", "Number272Test")
+            htmlsanitizer.free(s)
+        }
+        spec.it("Number307StrictModeValidHtmlTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<div>This is <p>Paragraph</p></div>", "")
+            spec.assert_str_eq(actual, "<div>This is <p>Paragraph</p></div>", "Number307StrictModeValidHtmlTest")
+            htmlsanitizer.free(s)
+        }
+        spec.it("ConstructorTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<div>test</div>", "")
+            spec.assert_str_eq(actual, "<div>test</div>", "ConstructorTest")
+            htmlsanitizer.free(s)
+        }
+        spec.it("Number322Test") callback {
+            s = htmlsanitizer.new()
+            set.add(s.allowed_tags, "style")
+            actual = htmlsanitizer.sanitize_document(s, "<html><head><style>p::-webkit-scrollbar-thumb { background: rgba(136, 136, 136, 1) }</style></head><body><p>test</p></body></html>", "")
+            spec.assert_str_eq(actual, "<html><head><style>p::-webkit-scrollbar-thumb { background: rgba(136, 136, 136, 1) }</style></head><body><p>test</p></body></html>", "Number322Test")
+            htmlsanitizer.free(s)
+        }
+        spec.it("NoScriptTest") callback {
+            s = htmlsanitizer.new()
+            set.add(s.allowed_tags, "noscript")
+            set.remove(s.allowed_tags, "img")
+            actual = htmlsanitizer.sanitize(s, "<noscript>&lt;/noscript&gt&lt;img src=x onerror=mxss(1)&gt;", "")
+            spec.assert_str_eq(actual, "<noscript>&lt;/noscript&gt&lt;img src=x onerror=mxss(1)&gt;</noscript>", "NoScriptTest")
+            htmlsanitizer.free(s)
+        }
+        spec.it("PageRuleTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<style>@page { margin: 25mm }</style>", "")
+            spec.assert_str_eq(actual, "<style>@page { margin: 25mm }</style>", "PageRuleTest")
+            htmlsanitizer.free(s)
+        }
+        spec.it("RgbTest_1") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<p style='color: RGB(0,0,0)'>Text</p>", "http://www.example.com")
+            spec.assert_str_eq(actual, "<p style=\"color: rgba(0, 0, 0, 1)\">Text</p>", "RgbTest_1")
+            htmlsanitizer.free(s)
+        }
+        spec.it("RgbTest_2") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<p style='color: rgb(0,0,0)'>Text</p>", "http://www.example.com")
+            spec.assert_str_eq(actual, "<p style=\"color: rgba(0, 0, 0, 1)\">Text</p>", "RgbTest_2")
+            htmlsanitizer.free(s)
+        }
+        spec.it("InheritTest") callback {
+            s = htmlsanitizer.new()
+            set.add(s.allowed_tags, "style")
+            actual = htmlsanitizer.sanitize(s, "<style>div { margin: inherit }</style>", "")
+            spec.assert_str_eq(actual, "<style>div { margin: inherit }</style>", "InheritTest")
+            htmlsanitizer.free(s)
+        }
+        spec.it("ReplacementCharacterTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<span style=\"background-image: var(--urlSpellingErrorV2,url(&quot;https://www.example.com/))\">Ipsum</span>", "")
+            spec.assert_str_eq(actual, "<span style=\"background-image: var(--urlSpellingErrorV2,url(&quot;https://www.example.com/))\">Ipsum</span>", "ReplacementCharacterTest")
+            htmlsanitizer.free(s)
+        }
+        spec.it("Number469Test") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<div style=\"height: 0; background-image: url('https://example.com/1.jpg'), url('https://example.com/2.jpg'), url('https://example.com/3.jpg'); display: none;\"/>", "")
+            spec.assert_str_eq(actual, "<div style=\"height: 0; background-image: url(&quot;https://example.com/1.jpg&quot;), url(&quot;https://example.com/2.jpg&quot;), url(&quot;https://example.com/3.jpg&quot;); display: none\"></div>", "Number469Test")
+            htmlsanitizer.free(s)
+        }
+        spec.it("BypassTest") callback {
+            s = htmlsanitizer.new()
+            set.add(s.allowed_tags, "svg")
+            set.add(s.allowed_tags, "title")
+            set.add(s.allowed_tags, "xmp")
+            actual = htmlsanitizer.sanitize(s, "<svg></p><title><xmp></title><img src=x onerror=alert(1)></xmp></title>", "https://www.example.com")
+            spec.assert_str_eq(actual, "<svg></svg><p></p><title>&lt;xmp&gt;</title><img src=\"https://www.example.com/x\">", "BypassTest")
+            htmlsanitizer.free(s)
+        }
+        spec.it("Bypass2Test") callback {
+            s = htmlsanitizer.new()
+            set.add(s.allowed_tags, "form")
+            set.add(s.allowed_tags, "math")
+            set.add(s.allowed_tags, "mtext")
+            set.add(s.allowed_tags, "mglyph")
+            set.add(s.allowed_tags, "xmp")
+            actual = htmlsanitizer.sanitize(s, "<form><math><mtext></form><form><mglyph><xmp></math><img src onerror=alert(1)>", "https://www.example.com")
+            spec.assert_str_eq(actual, "<form><math><mtext><form><mglyph><xmp>&lt;/math&gt;&lt;img src onerror=alert(1)&gt;</xmp></mglyph></form></mtext></math></form>", "Bypass2Test")
+            htmlsanitizer.free(s)
+        }
+        spec.it("Bypass3Test") callback {
+            s = htmlsanitizer.new()
+            set.add(s.allowed_tags, "svg")
+            set.add(s.allowed_tags, "title")
+            set.add(s.allowed_tags, "noscript")
+            actual = htmlsanitizer.sanitize(s, "<svg></p><title><noscript></title><img src=x onerror=alert(1)></noscript></title>", "https://www.example.com")
+            spec.assert_str_eq(actual, "<svg></svg><p></p><title>&lt;noscript&gt;</title><img src=\"https://www.example.com/x\">", "Bypass3Test")
+            htmlsanitizer.free(s)
+        }
+        spec.it("KeepChildNodesTextTest") callback {
+            s = htmlsanitizer.new()
+            set.remove(s.allowed_tags, "iframe")
+            actual = htmlsanitizer.sanitize(s, "<iframe><img></iframe><iframe>&lt;img&gt;</iframe>", "")
+            spec.assert_str_eq(actual, "&lt;img&gt;&amp;lt;img&amp;gt;", "KeepChildNodesTextTest")
+            htmlsanitizer.free(s)
+        }
+        spec.it("AllowStyleAttributeCssCustomPropertiesTest") callback {
+            s = htmlsanitizer.new()
+            set.remove(s.allowed_tags, "iframe")
+            actual = htmlsanitizer.sanitize(s, "<div style=\"--my-var: 1px\"></div>", "")
+            spec.assert_str_eq(actual, "<div style=\"--my-var: 1px\"></div>", "AllowStyleAttributeCssCustomPropertiesTest")
+            htmlsanitizer.free(s)
+        }
+        spec.it("AllowStyleTagCssCustomPropertiesTest") callback {
+            s = htmlsanitizer.new()
+            set.add(s.allowed_tags, "style")
+            actual = htmlsanitizer.sanitize(s, "<style>:root { --my-var: 1px }</style>", "")
+            spec.assert_str_eq(actual, "<style>:root { --my-var: 1px }</style>", "AllowStyleTagCssCustomPropertiesTest")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeStyleUrlQuotedParenthesisTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<div style=\"--logo: url('a(1).png')\">x</div>", "https://cdn.example.com/assets/")
+            spec.assert_str_eq(actual, "<div style=\"--logo: url('https://cdn.example.com/assets/a(1).png')\">x</div>", "SanitizeStyleUrlQuotedParenthesisTest")
+            htmlsanitizer.free(s)
+        }
+        spec.it("DisallowStyleAttributeCssCustomPropertiesTest") callback {
+            s = htmlsanitizer.new()
+            set.remove(s.allowed_tags, "iframe")
+            actual = htmlsanitizer.sanitize(s, "<div style=\"--my-var: 1px\"></div>", "")
+            spec.assert_str_eq(actual, "<div></div>", "DisallowStyleAttributeCssCustomPropertiesTest")
+            htmlsanitizer.free(s)
+        }
+        spec.it("DisallowStyleTagCssCustomPropertiesTest") callback {
+            s = htmlsanitizer.new()
+            set.add(s.allowed_tags, "style")
+            actual = htmlsanitizer.sanitize(s, "<style>:root { --my-var: 1px }</style>", "")
+            spec.assert_str_eq(actual, "<style>:root { }</style>", "DisallowStyleTagCssCustomPropertiesTest")
+            htmlsanitizer.free(s)
+        }
+        spec.it("TemplateTest") callback {
+            s = htmlsanitizer.new()
+            set.add(s.allowed_tags, "template")
+            set.add(s.allowed_tags, "style")
+            actual = htmlsanitizer.sanitize(s, "<div><template><style>div { display: none }</style><script>alert('xss')</script></template></div>", "")
+            spec.assert_str_eq(actual, "<div><template><style>div { display: none }</style></template></div>", "TemplateTest")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeStyleVarShorthandExpressionTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<div style=\"font: var(--a, expression(alert(1)))\">x</div>", "")
+            spec.assert_str_eq(actual, "<div>x</div>", "SanitizeStyleVarShorthandExpressionTest")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeStyleVarShorthandAllowedUrlTest_1") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<div style=\"background: var(--a, url(http://www.example.com/a.png))\">x</div>", "")
+            spec.assert_str_eq(actual, "<div style=\"background: var(--a, url(http://www.example.com/a.png))\">x</div>", "SanitizeStyleVarShorthandAllowedUrlTest_1")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeStyleVarShorthandAllowedUrlTest_2") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<div style=\"background: var(--a, url(pic.png))\">x</div>", "https://cdn.example.com/assets/")
+            spec.assert_str_eq(actual, "<div style=\"background: var(--a, url(https://cdn.example.com/assets/pic.png))\">x</div>", "SanitizeStyleVarShorthandAllowedUrlTest_2")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeStyleVarShorthandAllowedUrlTest_3") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<div style=\"border-image: var(--a, url(pic.png))\">x</div>", "https://cdn.example.com/assets/")
+            spec.assert_str_eq(actual, "<div style=\"border-image: var(--a, url(https://cdn.example.com/assets/pic.png))\">x</div>", "SanitizeStyleVarShorthandAllowedUrlTest_3")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeStyleVarShorthandMixedUrlsTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<div style=\"background: var(--a, url(http://www.example.com/a.png)), var(--b, url(javascript:alert(1)))\">x</div>", "")
+            spec.assert_str_eq(actual, "<div>x</div>", "SanitizeStyleVarShorthandMixedUrlsTest")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeStyleVarShorthandNotAllowedPropertyTest") callback {
+            s = htmlsanitizer.new()
+            set.remove(s.allowed_css_properties, "background")
+            actual = htmlsanitizer.sanitize(s, "<div style=\"background: var(--a, url(http://www.example.com/a.png))\">x</div>", "")
+            spec.assert_str_eq(actual, "<div>x</div>", "SanitizeStyleVarShorthandNotAllowedPropertyTest")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeImportRuleTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<style>@import url(https://cdn.example.com/x.css);</style>", "")
+            spec.assert_str_eq(actual, "<style>@import url(\"https://cdn.example.com/x.css\");</style>", "SanitizeImportRuleTest")
+            htmlsanitizer.free(s)
+        }
+        spec.it("NamespaceRuleUrlIsNotResolvedTest") callback {
+            s = htmlsanitizer.new()
+            set.add(s.allowed_tags, "style")
+            actual = htmlsanitizer.sanitize(s, "<style>@namespace svg url(http://www.w3.org/2000/svg);</style>", "https://www.example.com/d/")
+            spec.assert_str_eq(actual, "<style>@namespace svg url(\"http://www.w3.org/2000/svg\");</style>", "NamespaceRuleUrlIsNotResolvedTest")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeSvgStyleTagWithTypeAttributeTest") callback {
+            s = htmlsanitizer.new()
+            set.add(s.allowed_tags, "style")
+            set.add(s.allowed_tags, "svg")
+            actual = htmlsanitizer.sanitize(s, "<svg><style type=\"\">a { background-image: url(javascript:alert(1)); color: red }</style></svg>", "")
+            spec.assert_str_eq(actual, "<svg><style type=\"\">a { color: rgba(255, 0, 0, 1) }</style></svg>", "SanitizeSvgStyleTagWithTypeAttributeTest")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeUsemapKeepsHashNameReferenceUnderBaseUrlTest") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<img usemap=\"#map1\">", "https://www.example.com/page")
+            spec.assert_str_eq(actual, "<img usemap=\"#map1\">", "SanitizeUsemapKeepsHashNameReferenceUnderBaseUrlTest")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeSrcsetWithoutDescriptorTest") callback {
+            s = htmlsanitizer.new()
+            set.add(s.allowed_attributes, "srcset")
+            actual = htmlsanitizer.sanitize(s, "<img srcset=\"https://www.example.com/a.jpg\">", "")
+            spec.assert_str_eq(actual, "<img srcset=\"https://www.example.com/a.jpg\">", "SanitizeSrcsetWithoutDescriptorTest")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeUriListResolvesRelativeUrlsAgainstBaseUrlTest") callback {
+            s = htmlsanitizer.new()
+            set.add(s.allowed_attributes, "srcset")
+            actual = htmlsanitizer.sanitize(s, "<img srcset=\"a.jpg 1x, b.jpg 2x\">", "https://www.example.com/")
+            spec.assert_str_eq(actual, "<img srcset=\"https://www.example.com/a.jpg 1x, https://www.example.com/b.jpg 2x\">", "SanitizeUriListResolvesRelativeUrlsAgainstBaseUrlTest")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeRemoveStyleScriptsTest_1") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<DIV STYLE='background-image: url(javascript:alert(\"foo\"))'>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div></div>"),
+                "SanitizeRemoveStyleScriptsTest_1 (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeRemoveStyleScriptsTest_2") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<DIV STYLE='background-image: url(&#1;javascript:alert(\"foo\"))'>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div></div>"),
+                "SanitizeRemoveStyleScriptsTest_2 (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeRemoveStyleScriptsTest_3") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<DIV STYLE='background-image: url(\"javascript:alert(foo)\")'>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div></div>"),
+                "SanitizeRemoveStyleScriptsTest_3 (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeRemoveStyleScriptsTest_4") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<DIV STYLE='width: expression(alert(\"foo\"));'>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div></div>"),
+                "SanitizeRemoveStyleScriptsTest_4 (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeRemoveStyleScriptsTest_5") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<DIV STYLE='width: e/**/xpression(alert(\"foo\"));'>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div></div>"),
+                "SanitizeRemoveStyleScriptsTest_5 (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeRemoveStyleScriptsTest_6") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<DIV STYLE='background-image: \\75rl(javascript:alert(\"foo\"))'>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div></div>"),
+                "SanitizeRemoveStyleScriptsTest_6 (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeRemoveStyleScriptsTest_7") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<DIV STYLE='background-image: \\000075rl(javascript:alert(\"foo\"))'>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div></div>"),
+                "SanitizeRemoveStyleScriptsTest_7 (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeRemoveStyleScriptsTest_8") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<DIV STYLE='background-image: \\75 rl(javascript:alert(\"foo\"))'>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div></div>"),
+                "SanitizeRemoveStyleScriptsTest_8 (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeRemoveStyleScriptsTest_9") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<DIV STYLE='background-image: \\000075 rl(javascript:alert(\"foo\"))'>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div></div>"),
+                "SanitizeRemoveStyleScriptsTest_9 (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeRemoveStyleScriptsTest_10") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<DIV STYLE='background-image: \\000075\nrl(javascript:alert(\"foo\"))'>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div></div>"),
+                "SanitizeRemoveStyleScriptsTest_10 (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeRemoveSrcJavascriptTest_1") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<img src=\\'javascript:alert(\"foo\")\\'>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<img>"),
+                "SanitizeRemoveSrcJavascriptTest_1 (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeRemoveSrcJavascriptTest_2") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<IMG SRC=\\'JaVaScRiPt:alert(\"foo\")\\'>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<img>"),
+                "SanitizeRemoveSrcJavascriptTest_2 (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeRemoveSrcJavascriptTest_3") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<IMG SRC=\\'&#106;&#97;&#118;&#97;&#115;&#99;&#114;&#105;&#112;&#116;&#58;alert(\"foo\")\\'>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<img>"),
+                "SanitizeRemoveSrcJavascriptTest_3 (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeRemoveSrcJavascriptTest_4") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<IMG SRC=\\'&#0000106&#0000097&#0000118&#0000097&#0000115&#0000099&#0000114&#0000105&#0000112&#0000116&#0000058alert(\"foo\")\\'>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<img>"),
+                "SanitizeRemoveSrcJavascriptTest_4 (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeRemoveSrcJavascriptTest_5") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<IMG SRC=\\'&#x6A&#x61&#x76&#x61&#x73&#x63&#x72&#x69&#x70&#x74&#x3A;alert(\"foo\")\\'>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<img>"),
+                "SanitizeRemoveSrcJavascriptTest_5 (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeRemoveSrcJavascriptTest_6") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<IMG SRC=\\'jav\\tascript:alert(\"foo\");\\'>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<img>"),
+                "SanitizeRemoveSrcJavascriptTest_6 (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeRemoveSrcJavascriptTest_7") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<IMG SRC=\\'jav&#x09;ascript:alert(\"foo\");\\'>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<img>"),
+                "SanitizeRemoveSrcJavascriptTest_7 (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeUnsafePropsTest_1") callback {
+            s = htmlsanitizer.new()
+            set.remove(s.allowed_css_properties, "position")
+            actual = htmlsanitizer.sanitize(s, "<div style=\"POSITION:RELATIVE\">XSS</div>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div>XSS</div>"),
+                "SanitizeUnsafePropsTest_1 (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeUnsafePropsTest_2") callback {
+            s = htmlsanitizer.new()
+            set.remove(s.allowed_css_properties, "position")
+            actual = htmlsanitizer.sanitize(s, "<div style=\"behavior:url(test.htc)\">XSS</div>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div>XSS</div>"),
+                "SanitizeUnsafePropsTest_2 (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeUnsafePropsTest_3") callback {
+            s = htmlsanitizer.new()
+            set.remove(s.allowed_css_properties, "position")
+            actual = htmlsanitizer.sanitize(s, "<div style=\"-ms-behavior:url(test.htc) url(#obj)\">XSS</div>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div>XSS</div>"),
+                "SanitizeUnsafePropsTest_3 (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeUnsafePropsTest_4") callback {
+            s = htmlsanitizer.new()
+            set.remove(s.allowed_css_properties, "position")
+            actual = htmlsanitizer.sanitize(s, "<div style=\"-o-link:'javascript:alert(1)';-o-link-source:current\">XSS</div>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div>XSS</div>"),
+                "SanitizeUnsafePropsTest_4 (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeUnsafePropsTest_5") callback {
+            s = htmlsanitizer.new()
+            set.remove(s.allowed_css_properties, "position")
+            actual = htmlsanitizer.sanitize(s, "<div style=\"-moz-binding:url(xss.xbl)\">XSS</div>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div>XSS</div>"),
+                "SanitizeUnsafePropsTest_5 (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeUnicodeExpressionTest_1") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<div style=\"top:ｅｘｐｒｅｓｓｉｏｎ(alert())\">XSS</div>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div>XSS</div>"),
+                "SanitizeUnicodeExpressionTest_1 (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeUnicodeExpressionTest_2") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<div style=\"top:ＥＸＰＲＥＳＳＩＯＮ(alert())\">XSS</div>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div>XSS</div>"),
+                "SanitizeUnicodeExpressionTest_2 (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+        spec.it("SanitizeUnicodeExpressionTest_3") callback {
+            s = htmlsanitizer.new()
+            actual = htmlsanitizer.sanitize(s, "<div style=\"top:expʀessɪoɴ(alert())\">XSS</div>", "")
+            spec.assert_str_eq(string.to_lower(actual), string.to_lower("<div>XSS</div>"),
+                "SanitizeUnicodeExpressionTest_3 (case-insensitive)")
+            htmlsanitizer.free(s)
+        }
+    }
+
+    spec.run_summary(fw)
+}

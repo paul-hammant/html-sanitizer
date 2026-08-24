@@ -25,6 +25,13 @@ correctly**, which is what these twelve checks sample.
 | 11 | `on_filter_url` rewrites a resolved URL | the string-returning callback (hardest shape) |
 | 12 | two sanitizers are independent | the handle really is per-instance |
 
+**`sanitize` vs `sanitize_document`.** They are not aliases. `sanitize` emits
+a **fragment**, unwrapping any document structure the input carried;
+`sanitize_document` emits a **whole document**, adding
+`<html><head></head><body>…</body></html>` when the input lacks it. Every
+binding's suite pins this, because aliasing them (as this repo did until the
+normalize/sanitize split) silently satisfies neither direction.
+
 Checks 10 and 11 are the ones worth being careful about — they are where a
 binding is most likely to be subtly wrong (a garbage-collected callback, a
 string returned with the wrong ownership). A binding whose language cannot

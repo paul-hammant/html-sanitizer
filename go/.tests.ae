@@ -1,11 +1,22 @@
 // Go binding tests (cgo). Unlike the dlopen-based bindings, cgo LINKS the
 // engine, so the .so must exist at BUILD time as well as run time. The
-// #cgo LDFLAGS in htmlsanitizer.go already point -L/-rpath at
-// go/native and core/native; we dep the shared engine node and stage its
-// artifact into go/native so the link and the rpath both resolve no matter
-// where aeb put the artifact.
+// #cgo LDFLAGS in htmlsanitizer.go already point -L/-rpath at go/native and
+// core/native; we stage the dep'd artifact into go/native so the link and the
+// rpath both resolve no matter where aeb put it.
+//
+// This is the ONE binding that goes fully idiomatic today, because lib/go is
+// the only SDK lib with an `env_var` setter (module.ae:41) — see
+// aeb/asks/sdk-builders-cannot-set-env-for-the-test-run.md for why the other
+// fifteen runtime-loading bindings cannot yet.
+//
+// go_test also derives LD_LIBRARY_PATH itself: it walks its deps for the
+// `shared_library_deps_including_transitive` artifact and dirname's it into
+// the run env (module.ae, builder go_test). core/.build.ae publishes under
+// that name precisely so this works with no plumbing here.
 import build
 import std.os
+import go
+import go (env_var)
 
 aeb(cap) {
     b = build.start()
@@ -13,6 +24,9 @@ aeb(cap) {
     lib = build.dep_artifact(b, "core/.build.ae", "shared_lib")
     root = build._get(b, "root")
 
+    // Staging is still ours: cgo's LDFLAGS are baked into the .go source, so
+    // the file has to be at the path that source names. An SDK builder cannot
+    // know that.
     dest = "${root}/go/native"
     _m = os.system("mkdir -p \"${dest}\"")
     cp = os.system("cp -f \"${lib}\" \"${dest}/libhtmlsanitizer.so\"")
@@ -23,12 +37,9 @@ aeb(cap) {
 
     // GOFLAGS=-mod=mod keeps this working in a sandbox with no module cache;
     // the package has no third-party dependencies, so nothing is fetched.
-    // LD_LIBRARY_PATH is belt-and-braces next to the linked-in rpath.
-    rc = os.system("cd \"${root}/go\" && CGO_ENABLED=1 LD_LIBRARY_PATH=\"${dest}:$LD_LIBRARY_PATH\" go test ./... -count=1")
-    if rc != 0 {
-        println("go: `go test` reported failures (is a cgo-capable toolchain installed?)")
-        return 1
+    go.go_test(b) {
+        env_var("CGO_ENABLED=1")
+        env_var("GOFLAGS=-mod=mod")
+        env_var("HTMLSANITIZER_LIB=${lib}")
     }
-    println("go: PASS — 12-check conformance + callback shapes")
-    return 0
 }

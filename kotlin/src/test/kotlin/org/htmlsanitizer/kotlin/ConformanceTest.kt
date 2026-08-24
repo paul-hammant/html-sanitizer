@@ -173,7 +173,15 @@ object ConformanceTest {
         check("abi version") { s -> assertTrue("abi >= 1", s.abiVersion() >= 1) }
 
         check("sanitize_document is wired") { s ->
-            assertEquals("<div>doc</div>", s.sanitizeDocument("<div>doc<script>x</script></div>"))
+            // sanitizeDocument emits a DOCUMENT, not a fragment — it ADDS the
+            // envelope when the input lacks one. sanitize() is the fragment
+            // form. docs/conformance.md pins this distinction; asserting the
+            // fragment shape here predated the normalize/sanitize split and
+            // only passed while the two were aliases.
+            assertEquals(
+                "<html><head></head><body><div>doc</div></body></html>",
+                s.sanitizeDocument("<div>doc<script>x</script></div>")
+            )
         }
 
         check("attribute set_value rewrites") { s ->

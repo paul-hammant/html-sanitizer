@@ -5,9 +5,14 @@
 // A consumer still has to link the engine itself — a Zig module carries
 // source, not link flags. See the README's "Using it from another project".
 .{
-    .name = "htmlsanitizer",
+    // Zig 0.16 requires an enum literal here (it was a string through 0.13).
+    .name = .htmlsanitizer,
     .version = "0.1.0",
-    .minimum_zig_version = "0.13.0",
+    // Required since Zig 0.16: a stable per-package id, generated once by zig
+    // itself. Do not change it — it is how a consumer's dependency graph
+    // identifies this package across renames.
+    .fingerprint = 0xb8d56016064ad47f,
+    .minimum_zig_version = "0.16.0",
     .paths = .{
         "build.zig",
         "build.zig.zon",

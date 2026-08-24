@@ -19,7 +19,7 @@
 //!
 //! Linking (rather than dlopen) is the right trade for Zig specifically:
 //! Zig has no runtime, so there is no GC to fight and no FFI marshalling
-//! layer to pay for — a `callconv(.C)` function *is* a C function pointer,
+//! layer to pay for — a `callconv(.c)` function *is* a C function pointer,
 //! and a `*anyopaque` into a Zig struct *is* a `void*`. The whole binding is
 //! therefore zero-overhead: it compiles to the same calls a hand-written C
 //! consumer would make.
@@ -46,7 +46,7 @@
 //! **3. A registered callback must outlive the engine's ability to call it.**
 //! The engine stores the raw function pointer and the raw `user_data` in a
 //! malloc'd box and calls them from inside `sanitize`. Zig's
-//! `callconv(.C)` functions are static code — they cannot move or be
+//! `callconv(.c)` functions are static code — they cannot move or be
 //! collected — so the *function* half is free. The `user_data` half is not:
 //! it points at a `Sanitizer`'s `hooks` field, so the `Sanitizer` must not
 //! move or die while a hook is registered. That is why `Sanitizer` is heap
@@ -407,7 +407,7 @@ const RegisteredSlots = struct {
 // integer a `c_int` — see rule 2 in the module doc. They unpack `ud` back
 // into the owning `*Sanitizer` and dispatch to the Zig-level `Hooks`.
 //
-// `callconv(.C)` is what makes these usable as C function pointers at all.
+// `callconv(.c)` is what makes these usable as C function pointers at all.
 // They are static code, so unlike a Go closure or a Python bound method they
 // need no keepalive of their own; only the `ud` pointer does.
 //
@@ -420,13 +420,13 @@ fn selfFrom(ud: ?*anyopaque) ?*Sanitizer {
     return @ptrCast(@alignCast(ud.?));
 }
 
-fn trampRemovingTag(ud: ?*anyopaque, node: ?*anyopaque, reason: c_int) callconv(.C) c_int {
+fn trampRemovingTag(ud: ?*anyopaque, node: ?*anyopaque, reason: c_int) callconv(.c) c_int {
     const self = selfFrom(ud) orelse return 0;
     const f = self.hooks.removing_tag orelse return 0;
     return if (f(self.hooks.ctx, Node{ .ptr = node }, @enumFromInt(reason))) 1 else 0;
 }
 
-fn trampRemovingAttribute(ud: ?*anyopaque, elem: ?*anyopaque, attr: ?*anyopaque, reason: c_int) callconv(.C) c_int {
+fn trampRemovingAttribute(ud: ?*anyopaque, elem: ?*anyopaque, attr: ?*anyopaque, reason: c_int) callconv(.c) c_int {
     const self = selfFrom(ud) orelse return 0;
     const f = self.hooks.removing_attribute orelse return 0;
     return if (f(self.hooks.ctx, Node{ .ptr = elem }, Attribute{ .ptr = attr }, @enumFromInt(reason))) 1 else 0;
@@ -438,7 +438,7 @@ fn trampRemovingStyle(
     name: [*c]const u8,
     value: [*c]const u8,
     reason: c_int,
-) callconv(.C) c_int {
+) callconv(.c) c_int {
     const self = selfFrom(ud) orelse return 0;
     const f = self.hooks.removing_style orelse return 0;
     // Borrowed for the duration of this call only — the C trampoline in
@@ -447,19 +447,19 @@ fn trampRemovingStyle(
     return if (f(self.hooks.ctx, Node{ .ptr = elem }, borrowString(name), borrowString(value), @enumFromInt(reason))) 1 else 0;
 }
 
-fn trampRemovingComment(ud: ?*anyopaque, node: ?*anyopaque) callconv(.C) c_int {
+fn trampRemovingComment(ud: ?*anyopaque, node: ?*anyopaque) callconv(.c) c_int {
     const self = selfFrom(ud) orelse return 0;
     const f = self.hooks.removing_comment orelse return 0;
     return if (f(self.hooks.ctx, Node{ .ptr = node })) 1 else 0;
 }
 
-fn trampPostProcessNode(ud: ?*anyopaque, node: ?*anyopaque) callconv(.C) void {
+fn trampPostProcessNode(ud: ?*anyopaque, node: ?*anyopaque) callconv(.c) void {
     const self = selfFrom(ud) orelse return;
     const f = self.hooks.post_process_node orelse return;
     f(self.hooks.ctx, Node{ .ptr = node });
 }
 
-fn trampPostProcessDom(ud: ?*anyopaque, node: ?*anyopaque) callconv(.C) void {
+fn trampPostProcessDom(ud: ?*anyopaque, node: ?*anyopaque) callconv(.c) void {
     const self = selfFrom(ud) orelse return;
     const f = self.hooks.post_process_dom orelse return;
     f(self.hooks.ctx, Node{ .ptr = node });
@@ -488,7 +488,7 @@ fn trampFilterUrl(
     elem: ?*anyopaque,
     raw: [*c]const u8,
     resolved: [*c]const u8,
-) callconv(.C) [*c]u8 {
+) callconv(.c) [*c]u8 {
     // No hook (or no self): "no rewrite" is returning `resolved` unchanged.
     const self = selfFrom(ud) orelse return @constCast(resolved);
     const f = self.hooks.filter_url orelse return @constCast(resolved);
@@ -617,7 +617,7 @@ pub const Sanitizer = struct {
 
     fn call(
         self: *Sanitizer,
-        f: *const fn (?*anyopaque, [*c]const u8, [*c]const u8) callconv(.C) [*c]u8,
+        f: *const fn (?*anyopaque, [*c]const u8, [*c]const u8) callconv(.c) [*c]u8,
         html: []const u8,
         base_url: []const u8,
     ) Error![]u8 {

@@ -34,9 +34,25 @@ Put its **parent** on `ERL_LIBS` and OTP finds the app:
 ERL_LIBS=erlang/_build erl
 ```
 
-`erlang/build.sh` does the compiling. It locates `erl_nif.h` by asking the
-runtime for `code:root_dir()` rather than guessing `/usr/lib/erlang`, so kerl,
-asdf, Homebrew and relocated installs all work.
+### Two ways to build it
+
+**In your own Erlang toolchain** — `rebar.config` is here for exactly that:
+
+```sh
+rebar3 compile     # the NIF + the .beam files
+rebar3 ct          # the conformance suite
+```
+
+The engine itself is not a rebar dependency; build it once first (see
+"Finding the engine" below, and ../core).
+
+**In this monorepo** — `aeb erlang/.build.ae`, which drives aeb's
+`erlang.nif` builder. That is what our CI runs, because this repo builds
+20+ language bindings from one dependency graph. It locates `erl_nif.h` by
+asking the runtime for `code:root_dir()` rather than guessing
+`/usr/lib/erlang`, so kerl, asdf, Homebrew and relocated installs all work.
+
+Neither path wraps the other; both produce the same OTP application.
 
 ### Finding the engine
 

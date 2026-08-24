@@ -35,16 +35,22 @@ pub fn build(b: *std.Build) void {
     // carries source, not link flags — which the README spells out.
     _ = b.addModule("htmlsanitizer", .{
         .root_source_file = b.path("src/root.zig"),
+        .target = target,
+        .optimize = optimize,
     });
 
     // ---- the conformance suite ----
     //
     // src/root.zig's trailing `test { _ = @import("conformance.zig"); }`
     // pulls the suite in, so one test artifact covers both files.
+    // Zig 0.16 takes a *module* here; through 0.13 these were flat fields on
+    // the options struct (.root_source_file/.target/.optimize).
     const tests = b.addTest(.{
-        .root_source_file = b.path("src/root.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/root.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     linkEngine(b, tests, dirs);
 
@@ -58,15 +64,20 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_tests.step);
 
     // ---- the example ----
-    const example = b.addExecutable(.{
-        .name = "htmlsanitizer-example",
+    const example_mod = b.createModule(.{
         .root_source_file = b.path("example/main.zig"),
         .target = target,
         .optimize = optimize,
     });
-    example.root_module.addImport("htmlsanitizer", b.createModule(.{
+    example_mod.addImport("htmlsanitizer", b.createModule(.{
         .root_source_file = b.path("src/root.zig"),
+        .target = target,
+        .optimize = optimize,
     }));
+    const example = b.addExecutable(.{
+        .name = "htmlsanitizer-example",
+        .root_module = example_mod,
+    });
     linkEngine(b, example, dirs);
     b.installArtifact(example);
 
@@ -79,32 +90,39 @@ pub fn build(b: *std.Build) void {
 /// Wire one compile step up to the engine: libc (the ABI is C), the search
 /// directories, the library itself, and an rpath so the result runs in place.
 fn linkEngine(b: *std.Build, step: *std.Build.Step.Compile, dirs: []const []const u8) void {
+    // Zig 0.16 moved the link surface onto the MODULE; through 0.13 these were
+    // methods on the Compile step itself (step.linkLibC(), step.addRPath(), …).
+    const mod = step.root_module;
     // `extern "c"` declarations and `std.heap.c_allocator` both need libc.
-    step.linkLibC();
+    mod.link_libc = true;
     for (dirs) |d| {
-        step.addLibraryPath(.{ .cwd_relative = d });
+        mod.addLibraryPath(.{ .cwd_relative = d });
         // rpath as well as -L: without it the test binary links fine and then
         // dies in the dynamic loader, which is a much more confusing failure
         // than a missing-library link error.
-        step.addRPath(.{ .cwd_relative = d });
+        mod.addRPath(.{ .cwd_relative = d });
     }
-    step.linkSystemLibrary("htmlsanitizer");
+    mod.linkSystemLibrary("htmlsanitizer", .{});
     _ = b;
 }
 
 /// Resolve the engine search path, most-specific first. Returns directories.
 fn engineSearchPath(b: *std.Build, engine_opt: ?[]const u8) []const []const u8 {
-    var dirs = std.ArrayList([]const u8).init(b.allocator);
+    // Zig 0.16's ArrayList is UNMANAGED: no .init(allocator), and every
+    // mutating call takes the allocator. Through 0.13 this was
+    // `std.ArrayList(T).init(b.allocator)` with allocator-free appends.
+    const gpa = b.allocator;
+    var dirs: std.ArrayList([]const u8) = .empty;
 
-    if (engine_opt) |e| dirs.append(asDir(b, e)) catch @panic("OOM");
-    if (b.graph.env_map.get("HTMLSANITIZER_LIB")) |e| {
-        if (e.len > 0) dirs.append(asDir(b, e)) catch @panic("OOM");
+    if (engine_opt) |e| dirs.append(gpa, asDir(b, e)) catch @panic("OOM");
+    if (b.graph.environ_map.get("HTMLSANITIZER_LIB")) |e| {
+        if (e.len > 0) dirs.append(gpa, asDir(b, e)) catch @panic("OOM");
     }
     // A staged copy next to this build file, then the in-tree monorepo path.
-    dirs.append(b.pathFromRoot("native")) catch @panic("OOM");
-    dirs.append(b.pathFromRoot("../core/native")) catch @panic("OOM");
+    dirs.append(gpa, b.pathFromRoot("native")) catch @panic("OOM");
+    dirs.append(gpa, b.pathFromRoot("../core/native")) catch @panic("OOM");
 
-    return dirs.toOwnedSlice() catch @panic("OOM");
+    return dirs.toOwnedSlice(gpa) catch @panic("OOM");
 }
 
 /// Accept either a directory or a path to the `.so` itself.

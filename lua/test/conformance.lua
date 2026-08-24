@@ -241,7 +241,7 @@ test("clearing a hook restores default behaviour", function(s)
 end)
 
 test("sanitize_document is wired", function(s)
-  eq(s:sanitize_document("<div>doc<script>x</script></div>"), "<div>doc</div>")
+  eq(s:sanitize_document("<div>doc<script>x</script></div>"), "<html><head></head><body><div>doc</div></body></html>")
 end)
 
 test("allow_data_attributes flag", function(s)
@@ -288,7 +288,7 @@ end)
 
 test("one-shot helpers", function()
   eq(hs.sanitize("<div>a<script>b</script></div>"), "<div>a</div>")
-  eq(hs.sanitize_document("<div>a<script>b</script></div>"), "<div>a</div>")
+  eq(hs.sanitize_document("<div>a<script>b</script></div>"), "<html><head></head><body><div>a</div></body></html>")
 end)
 
 -- ---- result ----

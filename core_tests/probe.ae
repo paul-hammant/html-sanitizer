@@ -1,4 +1,13 @@
-// Integration test for contrib.htmlsanitizer
+// Integration test for the htmlsanitizer engine.
+//
+// NB on style-attribute expectations: the serializer emits `a: 1; b: 2` with
+// NO trailing semicolon, matching upstream C# HtmlSanitizer. These
+// expectations were updated when that changed (it was worth 7 tests in the
+// Ganss parity suite); the INPUTS below still carry author-written
+// semicolons, which is the point — we normalise, we do not echo.
+//
+// Colours are likewise normalised to AngleSharp's canonical rgba(r, g, b, a),
+// so `color: red` comes back as `color: rgba(255, 0, 0, 1)`.
 
 import core.htmlsanitizer
 import core.htmlsanitizer (DomNode)
@@ -61,7 +70,7 @@ main() {
         s = htmlsanitizer.new()
         html = "<div onclick=\"alert(1)\" style=\"color: red;\" class=\"foo\">"
         actual = htmlsanitizer.sanitize(s, html, "")
-        expected = "<div style=\"color: red;\" class=\"foo\"></div>"
+        expected = "<div style=\"color: rgba(255, 0, 0, 1)\" class=\"foo\"></div>"
         if actual != expected { fail("Case 5 failed: got '${actual}', want '${expected}'") }
         htmlsanitizer.free(s)
         println("  PASS 5: onclick removed but style/class allowed")
@@ -72,22 +81,22 @@ main() {
         s = htmlsanitizer.new()
         html = "<div style=\"padding: 10px; background-image: url(mailto:test@example.com)\"></div>"
         actual = htmlsanitizer.sanitize(s, html, "")
-        expected = "<div style=\"padding: 10px;\"></div>"
+        expected = "<div style=\"padding: 10px\"></div>"
         if actual != expected { fail("Case 6a failed: got '${actual}', want '${expected}'") }
 
         html2 = "<div style=\"padding: 10px; background-image: url(folder/file.jpg)\"></div>"
         actual2 = htmlsanitizer.sanitize(s, html2, "http://www.example.com")
-        expected2 = "<div style=\"padding: 10px; background-image: url(&quot;http://www.example.com/folder/file.jpg&quot;);\"></div>"
+        expected2 = "<div style=\"padding: 10px; background-image: url(&quot;http://www.example.com/folder/file.jpg&quot;)\"></div>"
         if actual2 != expected2 { fail("Case 6b failed: got '${actual2}', want '${expected2}'") }
 
         html_empty = "<div style=\"--logo: url()\">x</div>"
         actual_empty = htmlsanitizer.sanitize(s, html_empty, "https://cdn.example.com/assets/")
-        expected_empty = "<div style=\"--logo: url();\">x</div>"
+        expected_empty = "<div style=\"--logo: url()\">x</div>"
         if actual_empty != expected_empty { fail("Case 6c failed: got '${actual_empty}', want '${expected_empty}'") }
 
         html_empty2 = "<div style=\"--logo: url(  )\">x</div>"
         actual_empty2 = htmlsanitizer.sanitize(s, html_empty2, "https://cdn.example.com/assets/")
-        expected_empty2 = "<div style=\"--logo: url();\">x</div>" // url(  ) becomes url()
+        expected_empty2 = "<div style=\"--logo: url()\">x</div>" // url(  ) becomes url()
         if actual_empty2 != expected_empty2 { fail("Case 6d failed: got '${actual_empty2}', want '${expected_empty2}'") }
 
         html_obfuscated = "<div style=\"background-image: \\75\\72\\6c(mailto:test@example.com)\"></div>"
