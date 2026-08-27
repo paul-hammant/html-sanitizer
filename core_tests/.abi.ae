@@ -9,29 +9,30 @@
 // failure is a binding bug, not an engine one. Keep it in C with nothing but
 // dlopen + dlsym: no language runtime can mask a problem here.
 
-import build
+import bldr
 import std.os
 
 aeb(cap) {
-    b = build.start()
-    build.dep(b, "core/.build.ae")
-    lib = build.dep_artifact(b, "core/.build.ae", "shared_lib")
-    root = build._get(b, "root")
-    bin = "${root}/target/abi_smoke"
-
-    _m = os.system("mkdir -p \"${root}/target\"")
-
-    rc = os.system("cc -D_GNU_SOURCE -o \"${bin}\" \"${root}/core_tests/abi_smoke.c\" -ldl")
-    if rc != 0 {
-        println("core_tests: failed to compile abi_smoke.c")
-        return 1
+    bldr.build() {
+        dep("core/.build.ae")
+        lib = dep_artifact("core/.build.ae", "shared_lib")
+        root = _get("root")
+        bin = "${root}/target/abi_smoke"
+    
+        _m = os.system("mkdir -p \"${root}/target\"")
+    
+        rc = os.system("cc -D_GNU_SOURCE -o \"${bin}\" \"${root}/core_tests/abi_smoke.c\" -ldl")
+        if rc != 0 {
+            println("core_tests: failed to compile abi_smoke.c")
+            return 1
+        }
+    
+        rc2 = os.system("\"${bin}\" \"${lib}\"")
+        if rc2 != 0 {
+            println("core_tests: the C ABI smoke test reported failures")
+            return 1
+        }
+        println("core_tests: PASS — C ABI conformance")
+        return 0
     }
-
-    rc2 = os.system("\"${bin}\" \"${lib}\"")
-    if rc2 != 0 {
-        println("core_tests: the C ABI smoke test reported failures")
-        return 1
-    }
-    println("core_tests: PASS — C ABI conformance")
-    return 0
 }

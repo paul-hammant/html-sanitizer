@@ -6,7 +6,7 @@
 // other binding rather than a JS rewrite.
 //
 // TWO independent backends, either of which is sufficient:
-//   emcc   (build.sh)      ~62KB .wasm + ~13KB JS glue
+//   emcc   (bldr.sh)      ~62KB .wasm + ~13KB JS glue
 //   zig cc (build-zig.sh)  ~85KB .wasm, NO glue at all (wasm32-wasi)
 // Both run the same 22 conformance assertions against the same ABI, so a
 // divergence between them is a build bug, not a behavioural difference.
@@ -15,49 +15,50 @@
 // download and Zig >= 0.16 is newer than most distros ship, so no other node
 // in this repo should be blocked on either.
 
-import build
+import bldr
 import std.os
 
 aeb(cap) {
-    b = build.start()
-    root = build._get(b, "root")
-    ran = 0
-
-    // ---- backend 1: Emscripten ----
-    if os.system("command -v emcc >/dev/null 2>&1") == 0 {
-        if os.system("cd \"${root}/wasm\" && ./build.sh") != 0 {
-            println("wasm: emcc build.sh failed")
-            return 1
-        }
-        if os.system("cd \"${root}/wasm\" && node --test test/conformance.test.mjs") != 0 {
-            println("wasm: emcc conformance tests failed")
-            return 1
-        }
-        println("wasm: PASS (emcc) — engine compiled to wasm32, conformance green")
-        ran = ran + 1
-    }
-
-    // ---- backend 2: zig cc (needs >= 0.16 for wasm bits/setjmp.h) ----
-    // The version gate lives in build-zig.sh; here we only ask whether zig
-    // exists, and let the script explain itself if it is too old.
-    if os.system("command -v zig >/dev/null 2>&1") == 0 {
-        if os.system("cd \"${root}/wasm\" && ./build-zig.sh") == 0 {
-            if os.system("cd \"${root}/wasm\" && node --test test/conformance-wasi.test.mjs") != 0 {
-                println("wasm: zig conformance tests failed")
+    bldr.build() {
+        root = _get("root")
+        ran = 0
+    
+        // ---- backend 1: Emscripten ----
+        if os.system("command -v emcc >/dev/null 2>&1") == 0 {
+            if os.system("cd \"${root}/wasm\" && ./build.sh") != 0 {
+                println("wasm: emcc bldr.sh failed")
                 return 1
             }
-            println("wasm: PASS (zig/wasi) — glue-free wasm32 module, conformance green")
+            if os.system("cd \"${root}/wasm\" && node --test test/conformance.test.mjs") != 0 {
+                println("wasm: emcc conformance tests failed")
+                return 1
+            }
+            println("wasm: PASS (emcc) — engine compiled to wasm32, conformance green")
             ran = ran + 1
-        } else {
-            // A too-old zig is a skip, not a failure: build-zig.sh has already
-            // printed why, and the emcc path may well have covered us.
-            println("wasm: zig backend unavailable (see the message above) — not counted")
         }
-    }
-
-    if ran == 0 {
-        println("wasm: SKIPPED — neither emcc nor zig >= 0.16 installed (see wasm/README.md)")
+    
+        // ---- backend 2: zig cc (needs >= 0.16 for wasm bits/setjmp.h) ----
+        // The version gate lives in build-zig.sh; here we only ask whether zig
+        // exists, and let the script explain itself if it is too old.
+        if os.system("command -v zig >/dev/null 2>&1") == 0 {
+            if os.system("cd \"${root}/wasm\" && ./build-zig.sh") == 0 {
+                if os.system("cd \"${root}/wasm\" && node --test test/conformance-wasi.test.mjs") != 0 {
+                    println("wasm: zig conformance tests failed")
+                    return 1
+                }
+                println("wasm: PASS (zig/wasi) — glue-free wasm32 module, conformance green")
+                ran = ran + 1
+            } else {
+                // A too-old zig is a skip, not a failure: build-zig.sh has already
+                // printed why, and the emcc path may well have covered us.
+                println("wasm: zig backend unavailable (see the message above) — not counted")
+            }
+        }
+    
+        if ran == 0 {
+            println("wasm: SKIPPED — neither emcc nor zig >= 0.16 installed (see wasm/README.md)")
+            return 0
+        }
         return 0
     }
-    return 0
 }

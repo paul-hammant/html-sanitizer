@@ -1,7 +1,7 @@
 // Clojure binding tests.
 //
 // The Clojure layer is NOT a second FFI: it calls the Java binding's classes
-// (build.dep java/.build.ae -> the standard JVM classpath artifact) and reaches the engine through
+// (bldr.dep java/.build.ae -> the standard JVM classpath artifact) and reaches the engine through
 // them. So this node deps BOTH java/.build.ae (for the classpath) and
 // core/.build.ae (for the .so that HTMLSANITIZER_LIB points at).
 //
@@ -9,28 +9,29 @@
 // requirement is a Clojure runtime on a JDK 22+ VM — 22+ because the Java
 // binding's classes are FFM-era bytecode and the runtime has to LOAD them.
 // clojure/run-tests.sh finds a runtime or SKIPS; it never reports a false pass.
-import build
+import bldr
 import std.os
 
 aeb(cap) {
-    b = build.start()
-    build.dep(b, "core/.build.ae")
-    build.dep(b, "java/.build.ae")
-    lib = build.dep_artifact(b, "core/.build.ae", "shared_lib")
-    classes = build.dep_artifact(b, "java/.build.ae", "jvm_classpath_deps_including_transitive")
-    root = build._get(b, "root")
-
-    rc = os.system("cd \"${root}/clojure\" && HS_JAVA_CLASSES=\"${classes}\" HTMLSANITIZER_LIB=\"${lib}\" ./run-tests.sh")
-    if rc == 77 {
-        // 77 is this monorepo's "toolchain absent" code, chosen because no
-        // compiler or JVM uses it for a real failure.
-        println("clojure: SKIPPED — no Clojure runtime installed")
+    bldr.build() {
+        dep("core/.build.ae")
+        dep("java/.build.ae")
+        lib = dep_artifact("core/.build.ae", "shared_lib")
+        classes = dep_artifact("java/.build.ae", "jvm_classpath_deps_including_transitive")
+        root = _get("root")
+    
+        rc = os.system("cd \"${root}/clojure\" && HS_JAVA_CLASSES=\"${classes}\" HTMLSANITIZER_LIB=\"${lib}\" ./run-tests.sh")
+        if rc == 77 {
+            // 77 is this monorepo's "toolchain absent" code, chosen because no
+            // compiler or JVM uses it for a real failure.
+            println("clojure: SKIPPED — no Clojure runtime installed")
+            return 0
+        }
+        if rc != 0 {
+            println("clojure: conformance suite reported failures")
+            return 1
+        }
+        println("clojure: PASS — 12-check conformance + callback shapes")
         return 0
     }
-    if rc != 0 {
-        println("clojure: conformance suite reported failures")
-        return 1
-    }
-    println("clojure: PASS — 12-check conformance + callback shapes")
-    return 0
 }

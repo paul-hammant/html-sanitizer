@@ -1,6 +1,6 @@
 // Lua binding: build the C extension and run the conformance suite.
 //
-// One leaf replaces the old build.sh + run_tests.sh pair. aeb's `lua`
+// One leaf replaces the old bldr.sh + run_tests.sh pair. aeb's `lua`
 // SDK owns the parts that were awkward in shell:
 //
 //   - Lua 5.4 discovery via pkg-config with header-path fallbacks, and a
@@ -14,25 +14,26 @@
 // so the engine path is threaded in via HTMLSANITIZER_LIB — the SDK
 // deliberately does not set app-specific env itself.
 
-import build
+import bldr
 import lua
 import lua (c_source, host_source, test_file)
-import build (env)
+import bldr (env)
 
 aeb(cap) {
-    b = build.start()
-    build.dep(b, "core/.build.ae")
-    lib = build.dep_artifact(b, "core/.build.ae", "shared_lib")
-
-    lua.conformance(b) {
-        c_source("src/htmlsanitizer.c")
-        // Built ONLY when no lua5.4 interpreter is found; it links liblua
-        // because it IS the interpreter, unlike the extension above.
-        host_source("host/lua54.c")
-        test_file("test/conformance.lua")
-        // Output name stays the SDK default, htmlsanitizer_native.so — which
-        // is what src/htmlsanitizer.lua's require("htmlsanitizer_native")
-        // and LUA_CPATH ./?.so expect. Do not rename without changing both.
-        env("HTMLSANITIZER_LIB", lib)
+    bldr.build() {
+        dep("core/.build.ae")
+        lib = dep_artifact("core/.build.ae", "shared_lib")
+    
+        lua.conformance() {
+            c_source("src/htmlsanitizer.c")
+            // Built ONLY when no lua5.4 interpreter is found; it links liblua
+            // because it IS the interpreter, unlike the extension above.
+            host_source("host/lua54.c")
+            test_file("test/conformance.lua")
+            // Output name stays the SDK default, htmlsanitizer_native.so — which
+            // is what src/htmlsanitizer.lua's require("htmlsanitizer_native")
+            // and LUA_CPATH ./?.so expect. Do not rename without changing both.
+            env("HTMLSANITIZER_LIB", lib)
+        }
     }
 }

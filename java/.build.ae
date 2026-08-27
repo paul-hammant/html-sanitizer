@@ -8,7 +8,7 @@
 // an error, which is an easy thing to miss. The important part is what it
 // publishes: the standard
 // `jvm_classpath_deps_including_transitive` artifact, which every JVM SDK
-// builder reads through `build._build_dep_classpath(...)`. The hand-rolled
+// builder reads through `bldr._build_dep_classpath(...)`. The hand-rolled
 // javac shell-out this replaced published a bespoke `classes_dir` instead,
 // which those builders cannot see — so migrating this node is what unblocks
 // the kotlin/scala/groovy/clojure migrations.
@@ -16,13 +16,14 @@
 // JDK 22+ is required: the binding is FFM/Panama (java.lang.foreign), final
 // in 22. `release` is deliberately NOT pinned below that.
 
-import build
+import bldr
 import java
 import java (source_layout)
 
 aeb(cap) {
-    b = build.start()
-    java.javac(b) {
-        source_layout("maven idiomatic")   // sources live in src/main/java
+    bldr.build() {
+        java.javac() {
+            source_layout("maven idiomatic")   // sources live in src/main/java
+        }
     }
 }

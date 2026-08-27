@@ -4,26 +4,27 @@
 // rather than making them assemble it from forty setters. It narrows the
 // default policy; it never widens it.
 
-import build
+import bldr
 import std.os
 
 aeb(cap) {
-    b = build.start()
-    root = build._get(b, "root")
-    out = "${root}/target/baselines"
-
-    _m = os.system("mkdir -p \"${root}/target\"")
-
-    rc = os.system("cd \"${root}\" && ae build core_tests/baselines.ae -o \"${out}\"")
-    if rc != 0 {
-        println("core_tests: failed to build baselines.ae")
-        return 1
+    bldr.build() {
+        root = _get("root")
+        out = "${root}/target/baselines"
+    
+        _m = os.system("mkdir -p \"${root}/target\"")
+    
+        rc = os.system("cd \"${root}\" && ae build core_tests/baselines.ae -o \"${out}\"")
+        if rc != 0 {
+            println("core_tests: failed to build baselines.ae")
+            return 1
+        }
+        rc2 = os.system("\"${out}\"")
+        if rc2 != 0 {
+            println("core_tests: baseline suite reported failures")
+            return 1
+        }
+        println("core_tests: PASS — baselines (email-safe)")
+        return 0
     }
-    rc2 = os.system("\"${out}\"")
-    if rc2 != 0 {
-        println("core_tests: baseline suite reported failures")
-        return 1
-    }
-    println("core_tests: PASS — baselines (email-safe)")
-    return 0
 }

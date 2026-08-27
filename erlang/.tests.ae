@@ -8,59 +8,60 @@
 // Conformance checks 10 and 11 (the callback hooks) are NOT covered here —
 // a NIF cannot synchronously call back into the BEAM, so this binding exposes
 // no hooks at all. See erlang/README.md. The other ten are covered in full.
-import build
+import bldr
 import std.os
 
 aeb(cap) {
-    b = build.start()
-    build.dep(b, "core/.build.ae")
-    build.dep(b, "erlang/.build.ae")
-    lib = build.dep_artifact(b, "core/.build.ae", "shared_lib")
-    root = build._get(b, "root")
-
-    // Skip honestly rather than fail the DAG when the toolchain is absent.
-    have = os.system("command -v erl >/dev/null 2>&1 && command -v erlc >/dev/null 2>&1")
-    if have != 0 {
-        println("erlang: SKIPPED — erl not installed (no Erlang/OTP on PATH)")
+    bldr.build() {
+        dep("core/.build.ae")
+        dep("erlang/.build.ae")
+        lib = dep_artifact("core/.build.ae", "shared_lib")
+        root = _get("root")
+    
+        // Skip honestly rather than fail the DAG when the toolchain is absent.
+        have = os.system("command -v erl >/dev/null 2>&1 && command -v erlc >/dev/null 2>&1")
+        if have != 0 {
+            println("erlang: SKIPPED — erl not installed (no Erlang/OTP on PATH)")
+            return 0
+        }
+    
+        // .build.ae skips (rather than fails) when erl_nif.h is missing, so the
+        // app may legitimately not exist. Without it there is nothing to test,
+        // and that is an environment gap, not a binding failure.
+        app = "${root}/erlang/_build/htmlsanitizer_nif"
+        built = os.system("test -f \"${app}/priv/htmlsanitizer_nif.so\"")
+        if built != 0 {
+            println("erlang: SKIPPED — NIF not built (erl_nif.h missing? install erlang-dev)")
+            return 0
+        }
+    
+        // EUnit is a separate package on Debian (erlang-eunit) and is absent from
+        // a minimal erlang-base install.
+        eunit = os.system("erl -noshell -eval 'case code:ensure_loaded(eunit) of {module,_} -> halt(0); _ -> halt(1) end.' >/dev/null 2>&1")
+        if eunit != 0 {
+            println("erlang: SKIPPED — eunit not available (install erlang-eunit)")
+            return 0
+        }
+    
+        tdir = "${root}/erlang/_build/test"
+        _m = os.system("mkdir -p \"${tdir}\"")
+    
+        // The suite needs the eunit parse transform, so it compiles against the
+        // installed eunit; ERL_LIBS makes the app under test resolvable too.
+        c = os.system("cd \"${root}/erlang\" && ERL_LIBS=\"${root}/erlang/_build\" erlc -o \"${tdir}\" test/htmlsanitizer_conformance_SUITE.erl")
+        if c != 0 {
+            println("erlang: could not compile the conformance suite")
+            return 1
+        }
+    
+        // HTMLSANITIZER_LIB points the NIF's loader at the engine artifact
+        // wherever aeb put it; priv/ holds a staged copy as the fallback.
+        rc = os.system("cd \"${root}/erlang\" && HTMLSANITIZER_LIB=\"${lib}\" ERL_LIBS=\"${root}/erlang/_build\" erl -noshell -pa \"${tdir}\" -eval 'case eunit:test(htmlsanitizer_conformance_SUITE, [verbose]) of ok -> halt(0); _ -> halt(1) end.'")
+        if rc != 0 {
+            println("erlang: conformance suite reported failures")
+            return 1
+        }
+        println("erlang: PASS — 10-check conformance (10/11 N/A: no NIF callbacks)")
         return 0
     }
-
-    // .build.ae skips (rather than fails) when erl_nif.h is missing, so the
-    // app may legitimately not exist. Without it there is nothing to test,
-    // and that is an environment gap, not a binding failure.
-    app = "${root}/erlang/_build/htmlsanitizer_nif"
-    built = os.system("test -f \"${app}/priv/htmlsanitizer_nif.so\"")
-    if built != 0 {
-        println("erlang: SKIPPED — NIF not built (erl_nif.h missing? install erlang-dev)")
-        return 0
-    }
-
-    // EUnit is a separate package on Debian (erlang-eunit) and is absent from
-    // a minimal erlang-base install.
-    eunit = os.system("erl -noshell -eval 'case code:ensure_loaded(eunit) of {module,_} -> halt(0); _ -> halt(1) end.' >/dev/null 2>&1")
-    if eunit != 0 {
-        println("erlang: SKIPPED — eunit not available (install erlang-eunit)")
-        return 0
-    }
-
-    tdir = "${root}/erlang/_build/test"
-    _m = os.system("mkdir -p \"${tdir}\"")
-
-    // The suite needs the eunit parse transform, so it compiles against the
-    // installed eunit; ERL_LIBS makes the app under test resolvable too.
-    c = os.system("cd \"${root}/erlang\" && ERL_LIBS=\"${root}/erlang/_build\" erlc -o \"${tdir}\" test/htmlsanitizer_conformance_SUITE.erl")
-    if c != 0 {
-        println("erlang: could not compile the conformance suite")
-        return 1
-    }
-
-    // HTMLSANITIZER_LIB points the NIF's loader at the engine artifact
-    // wherever aeb put it; priv/ holds a staged copy as the fallback.
-    rc = os.system("cd \"${root}/erlang\" && HTMLSANITIZER_LIB=\"${lib}\" ERL_LIBS=\"${root}/erlang/_build\" erl -noshell -pa \"${tdir}\" -eval 'case eunit:test(htmlsanitizer_conformance_SUITE, [verbose]) of ok -> halt(0); _ -> halt(1) end.'")
-    if rc != 0 {
-        println("erlang: conformance suite reported failures")
-        return 1
-    }
-    println("erlang: PASS — 10-check conformance (10/11 N/A: no NIF callbacks)")
-    return 0
 }

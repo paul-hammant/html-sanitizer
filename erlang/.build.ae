@@ -9,7 +9,7 @@
 //     _build/htmlsanitizer_nif/priv/htmlsanitizer_nif.so
 //     _build/htmlsanitizer_nif/priv/libhtmlsanitizer.so   (the engine)
 //
-// elixir/ and gleam/ build.dep THIS node and put `erlang/_build` on ERL_LIBS,
+// elixir/ and gleam/ bldr.dep THIS node and put `erlang/_build` on ERL_LIBS,
 // which is how OTP finds an application; they then load the very same
 // compiled htmlsanitizer_nif.beam. There is no second copy of the C anywhere
 // in the monorepo.
@@ -23,23 +23,24 @@
 // and staging the engine into priv/. A missing toolchain is a first-class
 // SKIP, counted as such in telemetry.
 
-import build
+import bldr
 import erlang
 import erlang (nif_source, erl_source, app_src, app_name, engine_lib)
 
 aeb(cap) {
-    b = build.start()
-    build.dep(b, "core/.build.ae")
-    lib = build.dep_artifact(b, "core/.build.ae", "shared_lib")
-
-    erlang.nif(b) {
-        nif_source("c_src/htmlsanitizer_nif.c")
-        erl_source("src/htmlsanitizer_nif.erl")
-        erl_source("src/htmlsanitizer.erl")
-        app_src("src/htmlsanitizer_nif.app.src")
-        app_name("htmlsanitizer_nif")
-        // Staged into priv/ so the app is self-contained; the NIF's load
-        // callback looks there after $HTMLSANITIZER_LIB.
-        engine_lib(lib)
+    bldr.build() {
+        dep("core/.build.ae")
+        lib = dep_artifact("core/.build.ae", "shared_lib")
+    
+        erlang.nif() {
+            nif_source("c_src/htmlsanitizer_nif.c")
+            erl_source("src/htmlsanitizer_nif.erl")
+            erl_source("src/htmlsanitizer.erl")
+            app_src("src/htmlsanitizer_nif.app.src")
+            app_name("htmlsanitizer_nif")
+            // Staged into priv/ so the app is self-contained; the NIF's load
+            // callback looks there after $HTMLSANITIZER_LIB.
+            engine_lib(lib)
+        }
     }
 }

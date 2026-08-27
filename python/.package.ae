@@ -6,36 +6,37 @@
 //
 // Deps core/.build.ae for the engine .so; publishes the built wheel on the
 // "wheel_dir" artifact edge, which python/.example.ae consumes.
-import build
+import bldr
 import std.os
 
 aeb(cap) {
-    b = build.start()
-    build.dep(b, "core/.build.ae")
-    lib = build.dep_artifact(b, "core/.build.ae", "shared_lib")
-    root = build._get(b, "root")
-    pydir = "${root}/python"
-
-    // 1. Stage the engine .so into the package tree (what the wheel ships).
-    rc = os.system("mkdir -p \"${pydir}/htmlsanitizer/native\" && cp \"${lib}\" \"${pydir}/htmlsanitizer/native/libhtmlsanitizer.so\"")
-    if rc != 0 {
-        println("python package: failed to stage the engine .so into htmlsanitizer/native/")
-        return 1
-    }
-
-    // 2. Build the wheel from the existing setup.py.
-    rc2 = os.system("cd \"${pydir}\" && rm -rf dist build htmlsanitizer.egg-info && python3 -m build --wheel")
-    if rc2 != 0 {
-        println("python package: SKIPPED — `python3 -m build` unavailable (pip install build)")
+    bldr.build() {
+        dep("core/.build.ae")
+        lib = dep_artifact("core/.build.ae", "shared_lib")
+        root = _get("root")
+        pydir = "${root}/python"
+    
+        // 1. Stage the engine .so into the package tree (what the wheel ships).
+        rc = os.system("mkdir -p \"${pydir}/htmlsanitizer/native\" && cp \"${lib}\" \"${pydir}/htmlsanitizer/native/libhtmlsanitizer.so\"")
+        if rc != 0 {
+            println("python package: failed to stage the engine .so into htmlsanitizer/native/")
+            return 1
+        }
+    
+        // 2. Build the wheel from the existing setup.py.
+        rc2 = os.system("cd \"${pydir}\" && rm -rf dist build htmlsanitizer.egg-info && python3 -m build --wheel")
+        if rc2 != 0 {
+            println("python package: SKIPPED — `python3 -m build` unavailable (pip install build)")
+            return 0
+        }
+    
+        rc3 = os.system("ls \"${pydir}/dist\"/*.whl >/dev/null 2>&1")
+        if rc3 != 0 {
+            println("python package: no wheel produced under python/dist/")
+            return 1
+        }
+        publish_artifact("wheel_dir", "${pydir}/dist")
+        println("python package: PASS — wheel built with the engine .so bundled")
         return 0
     }
-
-    rc3 = os.system("ls \"${pydir}/dist\"/*.whl >/dev/null 2>&1")
-    if rc3 != 0 {
-        println("python package: no wheel produced under python/dist/")
-        return 1
-    }
-    build.publish_artifact(b, "wheel_dir", "${pydir}/dist")
-    println("python package: PASS — wheel built with the engine .so bundled")
-    return 0
 }

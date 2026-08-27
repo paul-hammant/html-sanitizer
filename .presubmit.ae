@@ -8,50 +8,51 @@
 // is meaningful on a partial toolchain set. Read target/.aeb/logs/<label>.log
 // for per-node verdicts — aeb's exit status does not yet reflect leaf failure.
 
-import build
+import bldr
 import meta
 
 aeb(cap) {
-    b = build.start()
-    meta.desc(b, "engine + C ABI + every language binding")
-
-    // The engine and its two gates.
-    build.dep(b, "core_tests/.tests.ae")
-    build.dep(b, "core_tests/.abi.ae")
-    build.dep(b, "core_tests/.xss.ae")
-    build.dep(b, "core_tests/.ganss.ae")
-    build.dep(b, "core_tests/.normalize.ae")
-    build.dep(b, "core_tests/.baselines.ae")
-
-    // Native-FFI bindings.
-    build.dep(b, "python/.tests.ae")
-    build.dep(b, "ruby/.tests.ae")
-    build.dep(b, "go/.tests.ae")
-    build.dep(b, "rust/.tests.ae")
-    build.dep(b, "java/.tests.ae")
-    build.dep(b, "javascript/.tests.ae")
-    build.dep(b, "dotnet/.tests.ae")
-    build.dep(b, "dart/.tests.ae")
-    build.dep(b, "php/.tests.ae")
-    build.dep(b, "lua/.tests.ae")
-    build.dep(b, "haskell/.tests.ae")
-    build.dep(b, "nim/.tests.ae")
-    build.dep(b, "zig/.tests.ae")
-    build.dep(b, "pharo/.tests.ae")
-
-    // Browser target: recompiles the engine to wasm32 rather than loading the .so.
-    build.dep(b, "wasm/.tests.ae")
-
-    // BEAM family — erlang owns the NIF; elixir and gleam share it.
-    build.dep(b, "erlang/.tests.ae")
-    build.dep(b, "elixir/.tests.ae")
-    build.dep(b, "gleam/.tests.ae")
-
-    // JVM family — thin layers over the Java classes, no second FFI.
-    build.dep(b, "kotlin/.tests.ae")
-    build.dep(b, "scala/.tests.ae")
-    build.dep(b, "clojure/.tests.ae")
-    build.dep(b, "groovy/.tests.ae")
-
-    return 0
+    bldr.build() {
+        meta.desc("engine + C ABI + every language binding")
+    
+        // The engine and its two gates.
+        dep("core_tests/.tests.ae")
+        dep("core_tests/.abi.ae")
+        dep("core_tests/.xss.ae")
+        dep("core_tests/.ganss.ae")
+        dep("core_tests/.normalize.ae")
+        dep("core_tests/.baselines.ae")
+    
+        // Native-FFI bindings.
+        dep("python/.tests.ae")
+        dep("ruby/.tests.ae")
+        dep("go/.tests.ae")
+        dep("rust/.tests.ae")
+        dep("java/.tests.ae")
+        dep("javascript/.tests.ae")
+        dep("dotnet/.tests.ae")
+        dep("dart/.tests.ae")
+        dep("php/.tests.ae")
+        dep("lua/.tests.ae")
+        dep("haskell/.tests.ae")
+        dep("nim/.tests.ae")
+        dep("zig/.tests.ae")
+        dep("pharo/.tests.ae")
+    
+        // Browser target: recompiles the engine to wasm32 rather than loading the .so.
+        dep("wasm/.tests.ae")
+    
+        // BEAM family — erlang owns the NIF; elixir and gleam share it.
+        dep("erlang/.tests.ae")
+        dep("elixir/.tests.ae")
+        dep("gleam/.tests.ae")
+    
+        // JVM family — thin layers over the Java classes, no second FFI.
+        dep("kotlin/.tests.ae")
+        dep("scala/.tests.ae")
+        dep("clojure/.tests.ae")
+        dep("groovy/.tests.ae")
+    
+        return 0
+    }
 }

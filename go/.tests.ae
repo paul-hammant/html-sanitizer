@@ -13,33 +13,34 @@
 // `shared_library_deps_including_transitive` artifact and dirname's it into
 // the run env (module.ae, builder go_test). core/.build.ae publishes under
 // that name precisely so this works with no plumbing here.
-import build
+import bldr
 import std.os
 import go
 import go (env_var)
 
 aeb(cap) {
-    b = build.start()
-    build.dep(b, "core/.build.ae")
-    lib = build.dep_artifact(b, "core/.build.ae", "shared_lib")
-    root = build._get(b, "root")
-
-    // Staging is still ours: cgo's LDFLAGS are baked into the .go source, so
-    // the file has to be at the path that source names. An SDK builder cannot
-    // know that.
-    dest = "${root}/go/native"
-    _m = os.system("mkdir -p \"${dest}\"")
-    cp = os.system("cp -f \"${lib}\" \"${dest}/libhtmlsanitizer.so\"")
-    if cp != 0 {
-        println("go: could not stage the engine into go/native")
-        return 1
-    }
-
-    // GOFLAGS=-mod=mod keeps this working in a sandbox with no module cache;
-    // the package has no third-party dependencies, so nothing is fetched.
-    go.go_test(b) {
-        env_var("CGO_ENABLED=1")
-        env_var("GOFLAGS=-mod=mod")
-        env_var("HTMLSANITIZER_LIB=${lib}")
+    bldr.build() {
+        dep("core/.build.ae")
+        lib = dep_artifact("core/.build.ae", "shared_lib")
+        root = _get("root")
+    
+        // Staging is still ours: cgo's LDFLAGS are baked into the .go source, so
+        // the file has to be at the path that source names. An SDK builder cannot
+        // know that.
+        dest = "${root}/go/native"
+        _m = os.system("mkdir -p \"${dest}\"")
+        cp = os.system("cp -f \"${lib}\" \"${dest}/libhtmlsanitizer.so\"")
+        if cp != 0 {
+            println("go: could not stage the engine into go/native")
+            return 1
+        }
+    
+        // GOFLAGS=-mod=mod keeps this working in a sandbox with no module cache;
+        // the package has no third-party dependencies, so nothing is fetched.
+        go.go_test() {
+            env_var("CGO_ENABLED=1")
+            env_var("GOFLAGS=-mod=mod")
+            env_var("HTMLSANITIZER_LIB=${lib}")
+        }
     }
 }

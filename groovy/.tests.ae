@@ -1,7 +1,7 @@
 // Groovy binding tests.
 //
 // The Groovy layer is NOT a second FFI: it compiles against the Java binding's
-// classes (build.dep java/.build.ae -> the standard JVM classpath artifact) and reaches the engine
+// classes (bldr.dep java/.build.ae -> the standard JVM classpath artifact) and reaches the engine
 // through them. So this node deps BOTH java/.build.ae (for the classpath) and
 // core/.build.ae (for the .so that HTMLSANITIZER_LIB points at).
 //
@@ -11,30 +11,31 @@
 // groovy 2.4 on JDK 17 cannot read them. groovy/run-tests.sh probes for a
 // capable toolchain and verifies it by compiling against the real classes; if
 // there is none, this node SKIPS rather than reporting a false pass.
-import build
+import bldr
 import std.os
 
 aeb(cap) {
-    b = build.start()
-    build.dep(b, "core/.build.ae")
-    build.dep(b, "java/.build.ae")
-    lib = build.dep_artifact(b, "core/.build.ae", "shared_lib")
-    classes = build.dep_artifact(b, "java/.build.ae", "jvm_classpath_deps_including_transitive")
-    root = build._get(b, "root")
-
-    out = "${root}/target/.aeb/groovy-classes"
-
-    rc = os.system("cd \"${root}/groovy\" && HS_JAVA_CLASSES=\"${classes}\" HS_OUT=\"${out}\" HTMLSANITIZER_LIB=\"${lib}\" ./run-tests.sh")
-    if rc == 77 {
-        // 77 is this monorepo's "toolchain absent" code, chosen because no
-        // compiler or JVM uses it for a real failure.
-        println("groovy: SKIPPED — no Groovy 4+ toolchain on a JDK 22+ VM")
+    bldr.build() {
+        dep("core/.build.ae")
+        dep("java/.build.ae")
+        lib = dep_artifact("core/.build.ae", "shared_lib")
+        classes = dep_artifact("java/.build.ae", "jvm_classpath_deps_including_transitive")
+        root = _get("root")
+    
+        out = "${root}/target/.aeb/groovy-classes"
+    
+        rc = os.system("cd \"${root}/groovy\" && HS_JAVA_CLASSES=\"${classes}\" HS_OUT=\"${out}\" HTMLSANITIZER_LIB=\"${lib}\" ./run-tests.sh")
+        if rc == 77 {
+            // 77 is this monorepo's "toolchain absent" code, chosen because no
+            // compiler or JVM uses it for a real failure.
+            println("groovy: SKIPPED — no Groovy 4+ toolchain on a JDK 22+ VM")
+            return 0
+        }
+        if rc != 0 {
+            println("groovy: conformance suite reported failures")
+            return 1
+        }
+        println("groovy: PASS — 12-check conformance + callback shapes")
         return 0
     }
-    if rc != 0 {
-        println("groovy: conformance suite reported failures")
-        return 1
-    }
-    println("groovy: PASS — 12-check conformance + callback shapes")
-    return 0
 }

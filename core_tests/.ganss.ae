@@ -10,7 +10,7 @@
 // So: run it, print the score, and fail only if the score gets WORSE than the
 // recorded baseline. That way a regression is loud and progress is visible.
 
-import build
+import bldr
 import std.os
 import std.string
 import std.file
@@ -20,46 +20,47 @@ import std.file
 const BASELINE_FAILING = 36
 
 aeb(cap) {
-    b = build.start()
-    root = build._get(b, "root")
-    out = "${root}/target/ganss_parity"
-
-    _m = os.system("mkdir -p \"${root}/target\"")
-
-    rc = os.system("cd \"${root}\" && ae build core_tests/test_ganss_parity.ae -o \"${out}\"")
-    if rc != 0 {
-        println("core_tests: failed to build the Ganss parity suite")
-        return 1
-    }
-
-    // std.spec exits 1 when any test fails, which is expected here — the
-    // score, not the exit code, is the signal.
-    _r = os.system("\"${out}\" > \"${root}/target/ganss_parity.out\" 2>&1")
-
-    // Count the failures via the shell and leave the number in a file —
-    // simpler than threading an interpolated path through run_capture's argv,
-    // where ${root} and the shell's own quoting fight each other.
-    score = "${root}/target/ganss_parity.score"
-    _c = os.system("grep -c 'FAIL:' \"${root}/target/ganss_parity.out\" > \"${score}\" || true")
-
-    raw, rerr = file.read(score)
-    if rerr != "" {
-        println("core_tests: could not read the parity score (${rerr})")
-        return 1
-    }
-    failing, cerr = string.to_int(string.trim(raw))
-    if cerr != "" {
-        println("core_tests: parity score was not a number (${cerr})")
-        return 1
-    }
-    if failing > BASELINE_FAILING {
-        println("core_tests: Ganss parity REGRESSED — ${failing} failing, baseline ${BASELINE_FAILING}")
-        return 1
-    }
-    if failing < BASELINE_FAILING {
-        println("core_tests: Ganss parity IMPROVED — ${failing} failing (baseline ${BASELINE_FAILING}); lower BASELINE_FAILING")
+    bldr.build() {
+        root = _get("root")
+        out = "${root}/target/ganss_parity"
+    
+        _m = os.system("mkdir -p \"${root}/target\"")
+    
+        rc = os.system("cd \"${root}\" && ae build core_tests/test_ganss_parity.ae -o \"${out}\"")
+        if rc != 0 {
+            println("core_tests: failed to build the Ganss parity suite")
+            return 1
+        }
+    
+        // std.spec exits 1 when any test fails, which is expected here — the
+        // score, not the exit code, is the signal.
+        _r = os.system("\"${out}\" > \"${root}/target/ganss_parity.out\" 2>&1")
+    
+        // Count the failures via the shell and leave the number in a file —
+        // simpler than threading an interpolated path through run_capture's argv,
+        // where ${root} and the shell's own quoting fight each other.
+        score = "${root}/target/ganss_parity.score"
+        _c = os.system("grep -c 'FAIL:' \"${root}/target/ganss_parity.out\" > \"${score}\" || true")
+    
+        raw, rerr = file.read(score)
+        if rerr != "" {
+            println("core_tests: could not read the parity score (${rerr})")
+            return 1
+        }
+        failing, cerr = string.to_int(string.trim(raw))
+        if cerr != "" {
+            println("core_tests: parity score was not a number (${cerr})")
+            return 1
+        }
+        if failing > BASELINE_FAILING {
+            println("core_tests: Ganss parity REGRESSED — ${failing} failing, baseline ${BASELINE_FAILING}")
+            return 1
+        }
+        if failing < BASELINE_FAILING {
+            println("core_tests: Ganss parity IMPROVED — ${failing} failing (baseline ${BASELINE_FAILING}); lower BASELINE_FAILING")
+            return 0
+        }
+        println("core_tests: Ganss parity holding — ${failing}/189 failing, all triaged as non-security (docs/ganss-parity.md)")
         return 0
     }
-    println("core_tests: Ganss parity holding — ${failing}/189 failing, all triaged as non-security (docs/ganss-parity.md)")
-    return 0
 }

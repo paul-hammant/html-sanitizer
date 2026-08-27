@@ -27,43 +27,44 @@
 // ClassNotFoundException: kotlinx.coroutines.CoroutineScope, which reads as a
 // compiler bug rather than a missing fixture jar.
 
-import build
+import bldr
 import kotlin
 import kotlin (skip_below_jdk, source_layout)
 // jvm_args lives in lib/java (the JVM-common setters), not lib/kotlin.
 import java (jvm_args)
 
 aeb(cap) {
-    b = build.start()
-    build.dep(b, "core/.build.ae")
-    build.dep(b, "java/.build.ae")
-    lib = build.dep_artifact(b, "core/.build.ae", "shared_lib")
-
-    // Three builders, in order. The classpath comes from java/.build.ae's
-    // standard JVM artifact via the dep edge, so nothing is hardcoded.
-    //
-    // source_layout("maven idiomatic") is required on BOTH compile steps:
-    // without it they glob flat in the module root, find nothing, and report
-    // "no Kotlin source files found" while returning success.
-    kotlin.kotlinc(b) {                    // src/main/kotlin -> the wrapper
-        source_layout("maven idiomatic")
-    }
-    kotlin.kotlinc_test(b) {               // src/test/kotlin -> the suite
-        source_layout("maven idiomatic")
-    }
-
-    // The engine .so is dlopened by the Java layer at run time, so the JVM
-    // needs to find it. java/.tests.ae no longer needs this: java_main calls
-    // _collect_ldlibdeps and emits -Djava.library.path from the `ldlibdeps`
-    // artifact that aether.shared_lib publishes. kotlin_test does NOT — only
-    // lib/java collects ldlibdeps; lib/kotlin, lib/scala, lib/groovy and
-    // lib/clojure all lack it. So the path still goes in by hand here, as a
-    // system property (build's env() does not reach SDK builders — it stores
-    // under `proc_env`, which only the *project* builders drain).
-    // Filed as aeb/asks/jvm-run-builders-except-java-omit-ldlibdeps.md.
-    kotlin.kotlin_test(b, "org.htmlsanitizer.kotlin.ConformanceTest") {
-        skip_below_jdk(22)
-        jvm_args("--enable-native-access=ALL-UNNAMED")
-        jvm_args("-Dhtmlsanitizer.lib=${lib}")
+    bldr.build() {
+        dep("core/.build.ae")
+        dep("java/.build.ae")
+        lib = dep_artifact("core/.build.ae", "shared_lib")
+    
+        // Three builders, in order. The classpath comes from java/.build.ae's
+        // standard JVM artifact via the dep edge, so nothing is hardcoded.
+        //
+        // source_layout("maven idiomatic") is required on BOTH compile steps:
+        // without it they glob flat in the module root, find nothing, and report
+        // "no Kotlin source files found" while returning success.
+        kotlin.kotlinc() {                    // src/main/kotlin -> the wrapper
+            source_layout("maven idiomatic")
+        }
+        kotlin.kotlinc_test() {               // src/test/kotlin -> the suite
+            source_layout("maven idiomatic")
+        }
+    
+        // The engine .so is dlopened by the Java layer at run time, so the JVM
+        // needs to find it. java/.tests.ae no longer needs this: java_main calls
+        // _collect_ldlibdeps and emits -Djava.library.path from the `ldlibdeps`
+        // artifact that aether.shared_lib publishes. kotlin_test does NOT — only
+        // lib/java collects ldlibdeps; lib/kotlin, lib/scala, lib/groovy and
+        // lib/clojure all lack it. So the path still goes in by hand here, as a
+        // system property (build's env() does not reach SDK builders — it stores
+        // under `proc_env`, which only the *project* builders drain).
+        // Filed as aeb/asks/jvm-run-builders-except-java-omit-ldlibdeps.md.
+        kotlin.kotlin_test("org.htmlsanitizer.kotlin.ConformanceTest") {
+            skip_below_jdk(22)
+            jvm_args("--enable-native-access=ALL-UNNAMED")
+            jvm_args("-Dhtmlsanitizer.lib=${lib}")
+        }
     }
 }

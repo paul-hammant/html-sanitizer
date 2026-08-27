@@ -20,28 +20,29 @@
 // into -Djava.library.path. Native.java's platform search then finds
 // libhtmlsanitizer.so on it. That is the whole point of the artifact
 // contract — one dep edge, no paths in the leaf.
-import build
+import bldr
 import java
 import java (source_layout, jvm_args, skip_below_jdk)
 
 aeb(cap) {
-    b = build.start()
-    build.dep(b, "core/.build.ae")
-    build.dep(b, "java/.build.ae")
-
-    java.javac_test(b) {
-        source_layout("maven idiomatic")
-    }
-
-    // skip_below_jdk, not min_jdk: FFM is final in JDK 22, and a box with an
-    // older JDK should SKIP green rather than fail the line — an
-    // under-provisioned node is a fact about the box, not a defect in the
-    // binding. min_jdk(22) is the hard form and would FAIL there.
-    //
-    // --enable-native-access silences the restricted-method warning; without
-    // it the JVM only warns today but will fail in a future release.
-    java.java_main(b, "org.htmlsanitizer.ConformanceTest") {
-        skip_below_jdk(22)
-        jvm_args("--enable-native-access=ALL-UNNAMED")
+    bldr.build() {
+        dep("core/.build.ae")
+        dep("java/.build.ae")
+    
+        java.javac_test() {
+            source_layout("maven idiomatic")
+        }
+    
+        // skip_below_jdk, not min_jdk: FFM is final in JDK 22, and a box with an
+        // older JDK should SKIP green rather than fail the line — an
+        // under-provisioned node is a fact about the box, not a defect in the
+        // binding. min_jdk(22) is the hard form and would FAIL there.
+        //
+        // --enable-native-access silences the restricted-method warning; without
+        // it the JVM only warns today but will fail in a future release.
+        java.java_main("org.htmlsanitizer.ConformanceTest") {
+            skip_below_jdk(22)
+            jvm_args("--enable-native-access=ALL-UNNAMED")
+        }
     }
 }

@@ -22,16 +22,17 @@
 // leaf. Until this builder landed we hand-published those names ourselves,
 // guessing at an internal contract; now the builder owns it.
 
-import build
+import bldr
 import aether
 import aether (source, extra_source, output)
 
 aeb(cap) {
-    b = build.start()
-    aether.shared_lib(b) {
-        // source() defaults to <moduledir>.ae — ours is embed.ae.
-        source("embed.ae")
-        extra_source("_embed_support.c")
-        output("libhtmlsanitizer.so")
+    bldr.build() {
+        aether.shared_lib() {
+            // source() defaults to <moduledir>.ae — ours is embed.ae.
+            source("embed.ae")
+            extra_source("_embed_support.c")
+            output("libhtmlsanitizer.so")
+        }
     }
 }
