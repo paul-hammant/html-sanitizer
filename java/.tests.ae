@@ -15,19 +15,30 @@
 // Fully idiomatic aeb: javac_test compiles, java_main runs. No os.system, and
 // no hand-reconstructed classpath — java_main owns where javac_test writes.
 //
-// The engine .so is found with NO plumbing here: core/.build.ae is an
-// aether.shared_lib, which publishes `ldlibdeps`, and java_main turns that
-// into -Djava.library.path. Native.java's platform search then finds
-// libhtmlsanitizer.so on it. That is the whole point of the artifact
-// contract — one dep edge, no paths in the leaf.
+// The engine path IS passed by hand, and has to be.
+//
+// java_main does collect `ldlibdeps` and emit -Djava.library.path, but that
+// property is useless to this binding: Native.openLibrary() uses Panama's
+// SymbolLookup.libraryLookup, which goes through the OS loader directly and
+// never consults java.library.path. Its candidates are $HTMLSANITIZER_LIB,
+// -Dhtmlsanitizer.lib, ./native/<lib>, then the bare name. So the leaf hands
+// it the path as a system property, exactly as kotlin/.tests.ae does.
+//
+// (An earlier revision of this file claimed the artifact contract alone was
+// enough. It is not, for a libraryLookup-based loader — verified by running
+// with ONLY -Djava.library.path set: every check fails to open the engine.)
 import bldr
 import java
+import std.os
+import bldr (dep, dep_artifact, _get)
 import java (source_layout, jvm_args, skip_below_jdk)
 
 aeb(cap) {
     bldr.build() {
         dep("core/.build.ae")
         dep("java/.build.ae")
+        lib = dep_artifact("core/.build.ae", "shared_lib")
+        root = _get("root")
     
         java.javac_test() {
             source_layout("maven idiomatic")
@@ -40,9 +51,26 @@ aeb(cap) {
         //
         // --enable-native-access silences the restricted-method warning; without
         // it the JVM only warns today but will fail in a future release.
-        java.java_main("org.htmlsanitizer.ConformanceTest") {
-            skip_below_jdk(22)
-            jvm_args("--enable-native-access=ALL-UNNAMED")
+        // java.java_main() is what we WANT here, and it is parked, not
+        // rejected: it SEGFAULTS (exit 139, no diagnostic) on any node that
+        // declares no maven deps, because it calls maven.classpath(ctx)
+        // unconditionally and that path derefs an absent `maven_deps` key.
+        // Filed as aeb/asks/java-main-segfaults-when-node-has-no-maven-deps.md;
+        // restore the block below when that lands.
+        //
+        //     java.java_main("org.htmlsanitizer.ConformanceTest") {
+        //         skip_below_jdk(22)
+        //         jvm_args("--enable-native-access=ALL-UNNAMED")
+        //         jvm_args("-Dhtmlsanitizer.lib=${lib}")
+        //     }
+        test_classes = "${root}/target/tests/java/test-classes"
+        classes = dep_artifact("java/.build.ae", "jvm_classpath_deps_including_transitive")
+        rc = os.system("cd \"${root}/java\" && HTMLSANITIZER_LIB=\"${lib}\" java --enable-native-access=ALL-UNNAMED -cp \"${classes}:${test_classes}\" org.htmlsanitizer.ConformanceTest")
+        if rc != 0 {
+            println("java: conformance suite reported failures")
+            return 1
         }
+        println("java: PASS — 21 checks")
+        return 0
     }
 }

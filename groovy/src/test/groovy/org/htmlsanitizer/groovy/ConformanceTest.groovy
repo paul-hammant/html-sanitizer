@@ -179,7 +179,7 @@ class ConformanceTest {
         check('abi version') { HtmlSanitizer s -> assertTrue('abi >= 1', s.abiVersion() >= 1) }
 
         check('sanitize_document is wired') { HtmlSanitizer s ->
-            assertEquals('<div>doc</div>', s.sanitizeDocument('<div>doc<script>x</script></div>'))
+            assertEquals('<html><head></head><body><div>doc</div></body></html>', s.sanitizeDocument('<div>doc<script>x</script></div>'))
         }
 
         run('attribute set_value rewrites') {

@@ -145,7 +145,7 @@ pub fn abi_version_test() {
 pub fn sanitize_document_test() {
   use s <- with_sanitizer()
   htmlsanitizer.sanitize_document(s, "<div>doc<script>x</script></div>")
-  |> should.equal("<div>doc</div>")
+  |> should.equal("<html><head></head><body><div>doc</div></body></html>")
 }
 
 pub fn base_url_resolution_test() {

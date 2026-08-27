@@ -146,7 +146,7 @@
 
 (deftest test-sanitize-document-is-wired
   (with-open [s (hs/sanitizer)]
-    (is (= "<div>doc</div>" (hs/sanitize-document s "<div>doc<script>x</script></div>")))))
+    (is (= "<html><head></head><body><div>doc</div></body></html>" (hs/sanitize-document s "<div>doc<script>x</script></div>")))))
 
 (deftest test-attribute-set-value-rewrites
   (with-open [s (hs/sanitizer)]

@@ -9,11 +9,20 @@
 // for per-node verdicts — aeb's exit status does not yet reflect leaf failure.
 
 import bldr
-import meta
 
 aeb(cap) {
     bldr.build() {
-        meta.desc("engine + C ABI + every language binding")
+        // meta.desc("engine + C ABI + every language binding")
+        //
+        // Parked, not deleted. The Shape A codemod rewrote this call site to
+        // the b-free form, but lib/meta itself was NOT converted — it is the
+        // only SDK lib still 100% explicit-ctx (17 fns taking `ctx: ptr`, 0
+        // taking `_ctx: ptr`), so the call no longer type-checks:
+        //     error[E0200]: Function 'meta.desc' expects 2 argument(s), got 1
+        // Nothing in aeb calls meta.* either, so its own suite could not have
+        // caught this. Only lib/brew reads the value back (for packaging),
+        // which we do not use, so parking it costs nothing.
+        // Filed as aeb/asks/lib-meta-missed-by-the-shape-a-sweep.md.
     
         // The engine and its two gates.
         dep("core_tests/.tests.ae")

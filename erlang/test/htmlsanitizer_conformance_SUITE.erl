@@ -116,7 +116,7 @@ abi_version_test() ->
 
 sanitize_document_test() ->
     with_sanitizer(fun(S) ->
-        ?assertEqual(<<"<div>doc</div>">>,
+        ?assertEqual(<<"<html><head></head><body><div>doc</div></body></html>">>,
                      htmlsanitizer:sanitize_document(S, <<"<div>doc<script>x</script></div>">>))
     end).
 

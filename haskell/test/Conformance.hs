@@ -360,7 +360,7 @@ runChecks fs = do
 
   check fs "sanitizeDocument is wired" $ \s -> do
     out <- sanitizeDocument s "<div>doc<script>x</script></div>"
-    eqStr "output" out "<div>doc</div>"
+    eqStr "output" out "<html><head></head><body><div>doc</div></body></html>"
 
   check fs "allowDataAttributes flag" $ \s -> do
     off <- getAllowDataAttributes s

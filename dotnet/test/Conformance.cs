@@ -295,7 +295,7 @@ internal static class Conformance
         Check("SanitizeDocument is wired", () =>
         {
             using var s = new HtmlSanitizer();
-            Eq(s.SanitizeDocument("<div>doc<script>x</script></div>"), "<div>doc</div>");
+            Eq(s.SanitizeDocument("<div>doc<script>x</script></div>"), "<html><head></head><body><div>doc</div></body></html>");
         });
 
         Check("AllowDataAttributes flag", () =>

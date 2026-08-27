@@ -37,10 +37,14 @@ aeb(cap) {
     
         // GOFLAGS=-mod=mod keeps this working in a sandbox with no module cache;
         // the package has no third-party dependencies, so nothing is fetched.
-        go.go_test() {
+        rc = go.go_test() {
             env_var("CGO_ENABLED=1")
             env_var("GOFLAGS=-mod=mod")
             env_var("HTMLSANITIZER_LIB=${lib}")
         }
+        // Explicit: bldr.build() does not adopt a builder's rc as the block's
+        // implicit return, so without this the node reports FAIL even when
+        // go_test returns 0 and its log says "Go tests PASSED".
+        return rc
     }
 }

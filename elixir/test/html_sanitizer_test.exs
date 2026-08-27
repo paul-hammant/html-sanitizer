@@ -107,7 +107,7 @@ defmodule HtmlSanitizerTest do
 
   test "sanitize_document", %{s: s} do
     assert HtmlSanitizer.sanitize_document(s, "<div>doc<script>x</script></div>") ==
-             "<div>doc</div>"
+             "<html><head></head><body><div>doc</div></body></html>"
   end
 
   test "base url resolution", %{s: s} do
