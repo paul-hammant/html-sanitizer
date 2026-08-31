@@ -185,5 +185,8 @@ main() {
         }
     }
 
-    spec.run_summary(fw)
+    // Aether 0.612.0: run_summary RETURNS its verdict (0 green / 1 failed)
+    // instead of exit(1)ing. main()'s return value is the process exit status,
+    // so a bare call here would silently exit 0 on a failing suite.
+    return spec.run_summary(fw)
 }
