@@ -32,7 +32,7 @@ defmodule HtmlSanitizerTest do
   end
 
   test "02 onclick removed", %{s: s} do
-    assert HtmlSanitizer.sanitize(s, ~s(<div onclick="alert(1)">Hello</div>)) ==
+    assert HtmlSanitizer.sanitize(s, ~s|<div onclick="alert(1)">Hello</div>|) ==
              "<div>Hello</div>"
   end
 
@@ -41,7 +41,11 @@ defmodule HtmlSanitizerTest do
   end
 
   test "04 utf-8 round trip", %{s: s} do
-    assert HtmlSanitizer.sanitize(s, "<div>café ☕</div>") == "<div>café ☕</div>"
+    # Build the multibyte content by codepoint so the source stays pure
+    # ASCII: 0xE9 is e-acute, 0x2615 is the hot-beverage emoji. Raw multibyte
+    # literals trip Elixir 1.16's parser once a line carries several of them.
+    html = "<div>caf" <> <<0xE9::utf8, ?\s, 0x2615::utf8>> <> "</div>"
+    assert HtmlSanitizer.sanitize(s, html) == html
   end
 
   test "05 allow custom tag", %{s: s} do
@@ -111,8 +115,8 @@ defmodule HtmlSanitizerTest do
   end
 
   test "base url resolution", %{s: s} do
-    assert HtmlSanitizer.sanitize(s, ~s(<img src="logo.png">), "https://example.com") ==
-             ~s(<img src="https://example.com/logo.png">)
+    assert HtmlSanitizer.sanitize(s, ~s|<img src="logo.png">|, "https://example.com") ==
+             ~s|<img src="https://example.com/logo.png">|
   end
 
   # The NIF takes iodata, so a caller assembling HTML from a list should not
@@ -122,10 +126,10 @@ defmodule HtmlSanitizerTest do
   end
 
   test "allow_data_attributes", %{s: s} do
-    assert HtmlSanitizer.sanitize(s, ~s(<div data-x="1"></div>)) == "<div></div>"
+    assert HtmlSanitizer.sanitize(s, ~s|<div data-x="1"></div>|) == "<div></div>"
     assert :ok == HtmlSanitizer.set_allow_data_attributes(s, true)
     assert HtmlSanitizer.allow_data_attributes(s)
-    assert HtmlSanitizer.sanitize(s, ~s(<div data-x="1"></div>)) == ~s(<div data-x="1"></div>)
+    assert HtmlSanitizer.sanitize(s, ~s|<div data-x="1"></div>|) == ~s|<div data-x="1"></div>|
   end
 
   test "clear empties a list", %{s: s} do
