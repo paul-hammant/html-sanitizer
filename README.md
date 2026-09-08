@@ -144,7 +144,50 @@ Inherited from the engine, so identical in every binding:
 The build runner is [**aeb**](https://github.com/aether-lang-dev/aeb); the
 engine is compiled by [**Aether**](https://github.com/aether-lang-dev/aether).
 
+### Getting the toolchain (`ae` + `aeb`)
+
+**Prerequisites, kept separate:**
+
+- **Installing `ae` + `aeb`** needs only `curl` — as of aeb v0.298 the toolchain
+  installs binary-first, no compiler and no `make`.
+- **Building the engine** (`core/` → `libhtmlsanitizer.so`) needs a **C
+  compiler** (Aether compiles to C) plus `git`. Nothing else — the engine has no
+  third-party C dependencies.
+
+**Recommended — `./bootstrap.sh`.** It installs a pinned `ae` then `aeb` into
+`~/.local` (no sudo; `PREFIX=` to override) using the pins in
+[`ci/versions.env`](ci/versions.env), preflights the C compiler, then builds the
+engine and every binding whose toolchain is present.
+
+**Manual — one line.** aeb's `get.sh` ensures both tools (a pinned `ae` >=
+`AE_PIN`, then a pinned `aeb`) into `~/.local` (no sudo; `PREFIX=` to override):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/aether-lang-dev/aeb/main/get.sh \
+  | AE_PIN=0.650.0 AEB_REF=v0.300 sh
+```
+
+Prefer downloading to a file first if you want the fetch error surfaced and
+install progress shown; a path-named invocation runs the same way:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/aether-lang-dev/aeb/main/get.sh -o get.sh
+AE_PIN=0.650.0 AEB_REF=v0.300 sh get.sh
+```
+
+(A CI step can instead *source* `get.sh` as a function library — set
+`AEBGET_SOURCE_ONLY=1` so sourcing only defines the functions — then call
+`aeb_bootstrap`.)
+
+The known-good pair is `ae v0.650.0` + `aeb v0.300` (see `ci/versions.env`).
+The ae **floor is 0.649.0** — it carries the fix for the callback-string
+double-free ([aether#1928](https://github.com/aether-lang-dev/aether/issues/1928))
+that the `on_filter_url` hook path hits; below it, `core_tests` crashes.
+
+### Running it
+
 ```sh
+./bootstrap.sh            # toolchain (if missing) + engine + present bindings
 aeb core/.build.ae        # build the engine .so
 aeb core_tests/.tests.ae  # engine behaviour (12 C# cases, in Aether)
 aeb core_tests/.abi.ae    # C ABI conformance (pure C, dlopen only)
@@ -154,11 +197,9 @@ aeb .presubmit.ae         # everything
 ```
 
 Each binding's `.tests.ae` deps `core/.build.ae`, so the engine builds first
-and the binding is handed its path via `HTMLSANITIZER_LIB`.
-
-> **Note.** `aeb` currently exits 0 even when a leaf fails. Read
-> `target/.aeb/logs/<label>.log` for the real verdict — every leaf here ends
-> with an explicit `PASS`, `SKIPPED` or failure line.
+and the binding is handed its path via `HTMLSANITIZER_LIB`. `aeb` exits non-zero
+when a leaf fails (≥ v0.287), so its status gates CI directly; per-node logs are
+in `target/.aeb/logs/<label>.log`.
 
 A binding whose toolchain is not installed **skips loudly** (`<lang>:
 SKIPPED — …`) rather than failing the DAG, so a partial toolchain set still
