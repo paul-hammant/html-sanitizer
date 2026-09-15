@@ -164,7 +164,7 @@ engine and every binding whose toolchain is present.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/aether-lang-dev/aeb/main/get.sh \
-  | AE_PIN=0.650.0 AEB_REF=v0.300 sh
+  | AE_PIN=0.675.0 AEB_REF=v0.311 sh
 ```
 
 Prefer downloading to a file first if you want the fetch error surfaced and
@@ -172,17 +172,18 @@ install progress shown; a path-named invocation runs the same way:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/aether-lang-dev/aeb/main/get.sh -o get.sh
-AE_PIN=0.650.0 AEB_REF=v0.300 sh get.sh
+AE_PIN=0.675.0 AEB_REF=v0.311 sh get.sh
 ```
 
 (A CI step can instead *source* `get.sh` as a function library — set
 `AEBGET_SOURCE_ONLY=1` so sourcing only defines the functions — then call
 `aeb_bootstrap`.)
 
-The known-good pair is `ae v0.650.0` + `aeb v0.300` (see `ci/versions.env`).
-The ae **floor is 0.649.0** — it carries the fix for the callback-string
-double-free ([aether#1928](https://github.com/aether-lang-dev/aether/issues/1928))
-that the `on_filter_url` hook path hits; below it, `core_tests` crashes.
+The known-good pair is `ae v0.675.0` + `aeb v0.311` (see `ci/versions.env`).
+The ae **floor is 0.670.0** — aeb v0.311 links `fs.make_temp_file`, a stdlib
+symbol first shipped in ae 0.670; an older `libaether.a` fails the fan-out link.
+See `ci/versions.env` for the two version traps (the broken v0.311 tag, and the
+stale-`libaether.a` install mismatch).
 
 ### Running it
 
