@@ -34,7 +34,7 @@ AEB_GET_URL="https://raw.githubusercontent.com/aether-lang-dev/aeb/main/get.sh"
 # Pins from ci/versions.env (shell-overridable). AETHER_REF vX.Y.Z -> AE_PIN X.Y.Z.
 # shellcheck disable=SC1091
 [ -f "$HERE/ci/versions.env" ] && . "$HERE/ci/versions.env"
-MIN_AE="${MIN_AE:-${AETHER_REF#v}}"; MIN_AE="${MIN_AE:-0.670.0}"
+MIN_AE="${MIN_AE:-${AETHER_REF#v}}"; MIN_AE="${MIN_AE:-0.677.0}"
 
 say() { printf '\033[1;36m==>\033[0m %s\n' "$*"; }
 die() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
@@ -44,8 +44,8 @@ ae_version() { ae --version 2>/dev/null | head -n1 | sed -E 's/^ae ([0-9]+\.[0-9
 export PATH="$PREFIX/bin:$PATH"   # so freshly-installed ae/aeb are found below
 
 # ---- 1. Toolchain (ae + aeb), via aeb's get.sh (binary-first, make-free) ----
-# get.sh auto-installs only when invoked as a file (it keys on $0 ending in
-# get.sh), so download to a file and run THAT — never pipe it into sh.
+# Downloaded to a file and run under bash. get.sh also supports `curl … | sh`
+# directly; downloading first just surfaces a fetch error and shows progress.
 if command -v ae >/dev/null 2>&1 && command -v aeb >/dev/null 2>&1 \
    && have="$(ae_version || true)" && [ -n "$have" ] && version_ge "$have" "$MIN_AE"; then
     say "ae $have + aeb already on PATH (ae >= $MIN_AE) — skipping toolchain install"
