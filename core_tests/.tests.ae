@@ -1,8 +1,8 @@
-// Engine-level tests: the pure-Aether sanitizer, exercised through the
+// Core-level tests: the pure-Aether sanitizer, exercised through the
 // `htmlsanitizer` module directly (no C ABI, no binding). This is the
 // behavioural spec — the 12 cases ported from the C# HtmlSanitizer suite.
 //
-// Deliberately does NOT dep core/.build.ae: this path proves the ENGINE,
+// Deliberately does NOT dep core/.build.ae: this path proves the sanitizer core,
 // and building the .so is irrelevant to it. The ABI is proven separately by
 // core_tests/.abi.ae.
 
@@ -27,7 +27,7 @@ aeb(cap) {
             println("core_tests: probe.ae reported a failure")
             return 1
         }
-        println("core_tests: PASS — engine behaviour (12 cases)")
+        println("core_tests: PASS — sanitizer core behaviour (12 cases)")
         return 0
     }
 }

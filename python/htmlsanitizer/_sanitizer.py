@@ -1,4 +1,4 @@
-"""Idiomatic Python surface over the HtmlSanitizer engine.
+"""Idiomatic Python surface over the HtmlSanitizer core.
 
 Carries no sanitizer logic — see the monorepo's one rule in LLM.md. Every
 method here marshals to a `aether_hs_embed_*` call in `_native.py`.
@@ -93,7 +93,7 @@ class Node:
 
 
 class _AllowList:
-    """Set-like view over one of the engine's six policy lists."""
+    """Set-like view over one of the sanitizer core's six policy lists."""
 
     __slots__ = ("_owner", "_which")
 
@@ -150,7 +150,7 @@ class HtmlSanitizer:
         self._h = self._lib.aether_hs_embed_new()
         if not self._h:
             raise RuntimeError("failed to create the native sanitizer")
-        # ctypes callbacks must be kept alive for as long as the engine can
+        # ctypes callbacks must be kept alive for as long as the sanitizer core can
         # call them — a local trampoline would be GC'd and crash the process.
         self._keepalive = []
 
@@ -284,7 +284,7 @@ class HtmlSanitizer:
         """handler(node, raw_url, resolved_url) -> str
 
         Return the URL to use ("" drops the attribute). The returned string is
-        copied into a C buffer the engine takes ownership of.
+        copied into a C buffer the sanitizer core takes ownership of.
         """
         import ctypes.util  # noqa: F401  (keep libc lookup local to this path)
         libc = ctypes.CDLL(None)

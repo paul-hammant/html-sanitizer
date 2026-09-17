@@ -4,11 +4,11 @@
 -- Module      : HtmlSanitizer
 -- Description : Clean HTML of constructs that can lead to Cross-Site Scripting.
 --
--- A thin binding over the monorepo's ONE shared native engine —
+-- A thin binding over the monorepo's ONE shared native sanitizer core —
 -- @core\/native\/libhtmlsanitizer.so@, compiled from pure Aether. It contains
 -- __no sanitizer logic__: every function here marshals to an
 -- @aether_hs_embed_*@ call across the C ABI described in @core\/embed.ae@. One
--- engine, one set of behaviours, N language surfaces.
+-- sanitizer core, one set of behaviours, N language surfaces.
 --
 -- @
 -- import qualified Data.ByteString.Char8 as C
@@ -23,7 +23,7 @@
 --
 -- == Strings
 --
--- Everything is 'B.ByteString', holding UTF-8 bytes. The engine speaks UTF-8;
+-- Everything is 'B.ByteString', holding UTF-8 bytes. The sanitizer core speaks UTF-8;
 -- passing bytes straight through is lossless and keeps the dependency set to
 -- @base@ + @bytestring@. If you work in 'Data.Text.Text', encode with
 -- @Data.Text.Encoding.encodeUtf8@ at the boundary.
@@ -133,34 +133,34 @@ import qualified HtmlSanitizer.Native as N
 -- @sanHooks@ is the important field and the reason this type is not just a
 -- newtype over a 'Ptr'. Every 'FunPtr' produced by a @foreign import ccall
 -- \"wrapper\"@ is a heap-allocated executable stub that pins the Haskell
--- closure behind it. The GC does not know the engine is holding a pointer to
+-- closure behind it. The GC does not know the sanitizer core is holding a pointer to
 -- it, and it is not released when the Haskell value goes out of scope. So:
 --
---   * we __retain__ every stub we register here, for as long as the engine
+--   * we __retain__ every stub we register here, for as long as the sanitizer core
 --     could call it, and
 --   * we __free__ each exactly once, in 'close', with 'freeHaskellFunPtr'.
 --
 -- Getting this wrong is the classic Haskell FFI bug. Dropping the FunPtr
--- silently leaks the stub; freeing it while the engine still holds it turns
+-- silently leaks the stub; freeing it while the sanitizer core still holds it turns
 -- the next callback into a jump through reclaimed memory.
 --
 -- Note the ordering constraint in 'close': the hooks must be unregistered
 -- (or the handle freed) __before__ the stubs are released. We free the native
--- handle first, which drops the engine's reference to every hook, and only
+-- handle first, which drops the sanitizer core's reference to every hook, and only
 -- then free the stubs.
 data Sanitizer = Sanitizer
   { sanHandle :: IORef (Ptr ())
-    -- ^ The engine handle, or 'nullPtr' once closed.
+    -- ^ The sanitizer core handle, or 'nullPtr' once closed.
   , sanHooks :: IORef [IO ()]
     -- ^ Deferred 'freeHaskellFunPtr' actions, newest first. One per registered
     -- stub, including superseded ones — replacing a hook does not free the old
-    -- stub immediately, because the engine may still be mid-call on it from
+    -- stub immediately, because the sanitizer core may still be mid-call on it from
     -- another (mis)use; deferring to 'close' is the conservative choice and
     -- costs a few dozen bytes per re-registration.
   }
 
 -- | Things that can go wrong on this side of the boundary. Sanitizing itself
--- does not fail — the engine returns a cleaned string or an empty one.
+-- does not fail — the sanitizer core returns a cleaned string or an empty one.
 data SanitizerError
   = SanitizerAllocFailed
     -- ^ @aether_hs_embed_new@ returned null.
@@ -170,7 +170,7 @@ data SanitizerError
 
 instance Exception SanitizerError
 
--- | Create a sanitizer with the engine's secure defaults populated.
+-- | Create a sanitizer with the sanitizer core's secure defaults populated.
 --
 -- The caller owns it: 'close' it, or better, use 'withSanitizer'.
 new :: IO Sanitizer
@@ -182,7 +182,7 @@ new = do
 -- | Release the native handle and every callback stub. Idempotent.
 --
 -- Order matters and is deliberate: freeing the handle first tears down the
--- engine's hook boxes, so by the time we 'freeHaskellFunPtr' the stubs, nothing
+-- sanitizer core's hook boxes, so by the time we 'freeHaskellFunPtr' the stubs, nothing
 -- can call them.
 close :: Sanitizer -> IO ()
 close s = do
@@ -209,7 +209,7 @@ withHandle s act = do
   when (h == nullPtr) $ throwIO SanitizerClosed
   act h
 
--- | Remember a stub so it outlives the engine's reference to it, and is freed
+-- | Remember a stub so it outlives the sanitizer core's reference to it, and is freed
 -- exactly once at 'close'.
 retainStub :: Sanitizer -> FunPtr a -> IO ()
 retainStub s fp = atomicModifyIORef' (sanHooks s) (\fs -> (freeHaskellFunPtr fp : fs, ()))
@@ -235,7 +235,7 @@ sanitizeWithBase s html base =
       N.withUtf8 base $ \cBase ->
         N.takeString =<< N.aether_hs_embed_sanitize h cHtml cBase
 
--- | Clean a full HTML document. Currently the same engine path as 'sanitize';
+-- | Clean a full HTML document. Currently the same sanitizer core path as 'sanitize';
 -- it is a distinct export so the two-method surface stays available.
 sanitizeDocument :: Sanitizer -> B.ByteString -> IO B.ByteString
 sanitizeDocument s html = sanitizeDocumentWithBase s html B.empty
@@ -328,10 +328,10 @@ itemAt s w i =
   withHandle s $ \h ->
     N.takeString =<< N.aether_hs_embed_item_at h (N.whichCInt w) (fromIntegral i)
 
--- | Every entry, in the engine's own order.
+-- | Every entry, in the sanitizer core's own order.
 --
 -- That order is unspecified but stable between mutations, so this yields each
--- item exactly once. Note the engine snapshots the whole set per @item_at@
+-- item exactly once. Note the sanitizer core snapshots the whole set per @item_at@
 -- call, making this O(n^2) — fine for policy lists of a few hundred entries
 -- read at configuration time, which is what they are.
 items :: Sanitizer -> N.Which -> IO [B.ByteString]
@@ -366,18 +366,18 @@ sortedItems s w = sort <$> items s w
 -- when the sanitize call returns, so do not retain one — read what you need
 -- into a 'B.ByteString' inside the callback.
 --
--- A hook runs on whatever OS thread the engine is calling from, inside a
+-- A hook runs on whatever OS thread the sanitizer core is calling from, inside a
 -- @safe@ foreign call, so ordinary 'IO' is fine. An exception escaping a hook
 -- would unwind through C, which is undefined behaviour, so each wrapper below
 -- is written to be total; keep your own hook bodies exception-free.
 
 -- | Register 'Nothing' to clear, or 'Just' a handler. Shared plumbing: build
--- the stub, retain it, hand the engine the raw pointer.
+-- the stub, retain it, hand the sanitizer core the raw pointer.
 --
 -- We pass 'nullPtr' as @user_data@ throughout. The ABI hands it back as the
 -- callback's first argument so a binding can find its handler; a Haskell
 -- closure already carries everything it needs, so the slot has no job here. We
--- still declare the parameter in every callback type, because the engine's
+-- still declare the parameter in every callback type, because the sanitizer core's
 -- trampolines pass it unconditionally — a wrapper of the wrong arity would
 -- shift every following argument.
 registerHook
@@ -394,7 +394,7 @@ registerHook s register mkStub mcb = withHandle s $ \h ->
       retainStub s fp
       register h (castFunPtrToPtr fp) nullPtr
 
--- | @on_removing_tag@ — return 'True' to keep a tag the engine would remove.
+-- | @on_removing_tag@ — return 'True' to keep a tag the sanitizer core would remove.
 onRemovingTag :: Sanitizer -> Maybe (Node -> N.Reason -> IO Bool) -> IO ()
 onRemovingTag s mcb =
   registerHook s N.aether_hs_embed_on_removing_tag N.mkCbRemovingTag (fmap wrap mcb)
@@ -454,12 +454,12 @@ onPostProcessDom s mcb =
 -- ABI.
 --
 -- Your handler is given the element, the raw attribute value, and the value
--- after the engine resolved it against the base URL. Return the URL to use:
+-- after the sanitizer core resolved it against the base URL. Return the URL to use:
 -- the @resolved@ argument unchanged for no rewrite, @\"\"@ to drop the
 -- attribute, or any replacement.
 --
--- __Ownership:__ the engine takes the returned buffer and frees it with the C
--- library's @free@, so we allocate it with the engine's own @malloc@ via
+-- __Ownership:__ the sanitizer core takes the returned buffer and frees it with the C
+-- library's @free@, so we allocate it with the sanitizer core's own @malloc@ via
 -- 'HtmlSanitizer.Native.dupUtf8'. Do not free it yourself; a
 -- GHC-allocated buffer here would be freed by the wrong allocator.
 onFilterUrl
@@ -474,7 +474,7 @@ onFilterUrl s mcb =
       resolved <- N.peekBorrowed cResolved
       out <- f (Node elemP) raw resolved
       -- Always duplicate, even for "no rewrite". Returning `cResolved` itself
-      -- is also legal (the engine's trampoline detects the identical pointer
+      -- is also legal (the sanitizer core's trampoline detects the identical pointer
       -- and short-circuits), but we have already copied the bytes into a
       -- ByteString, so we cannot tell "unchanged" from "rewritten to the same
       -- text" without comparing. Duplicating unconditionally is one malloc and
@@ -484,7 +484,7 @@ onFilterUrl s mcb =
 -- | Clear all seven hooks in one go.
 --
 -- You rarely need this: 'close' frees the native handle, which tears down the
--- engine's hook boxes anyway. It is here for the case where one sanitizer is
+-- sanitizer core's hook boxes anyway. It is here for the case where one sanitizer is
 -- reconfigured and reused, and it is what the conformance suite uses to prove
 -- a cleared hook really stops firing.
 --
@@ -533,7 +533,7 @@ nodeChildCount (Node p) = fromIntegral <$> N.aether_hs_embed_node_child_count p
 nodeChildAt :: Node -> Int -> IO (Maybe Node)
 nodeChildAt (Node p) i = maybeNode <$> N.aether_hs_embed_node_child_at p (fromIntegral i)
 
--- | Every child, skipping any index the engine reports as null (it should not
+-- | Every child, skipping any index the sanitizer core reports as null (it should not
 -- happen for @0 .. count-1@, but the accessor is documented as NULL-safe and
 -- dropping a hole beats a partial pattern match on it).
 nodeChildren :: Node -> IO [Node]
@@ -566,7 +566,7 @@ attrValue (Attribute p) = N.takeString =<< N.aether_hs_embed_attr_value p
 -- | Rewrite an attribute's value in place, e.g. to canonicalise a URL rather
 -- than remove the attribute.
 --
--- The engine copies the bytes, so the transient buffer this builds is safe.
+-- The sanitizer core copies the bytes, so the transient buffer this builds is safe.
 setAttrValue :: Attribute -> B.ByteString -> IO ()
 setAttrValue (Attribute p) v = N.withUtf8 v (N.aether_hs_embed_attr_set_value p)
 
@@ -584,8 +584,8 @@ maybeAttr p
 -- Introspection
 -- ---------------------------------------------------------------------------
 
--- | The engine's ABI revision. Bumped when a symbol is added, never when one
--- changes meaning; check it to fail fast against an engine older than the
+-- | The sanitizer core's ABI revision. Bumped when a symbol is added, never when one
+-- changes meaning; check it to fail fast against a sanitizer core older than the
 -- features you need.
 abiVersion :: IO Int
 abiVersion = fromIntegral <$> N.aether_hs_embed_abi_version

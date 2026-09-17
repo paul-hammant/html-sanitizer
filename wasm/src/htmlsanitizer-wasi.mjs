@@ -3,7 +3,7 @@
 // The distinguishing feature vs htmlsanitizer.mjs (the Emscripten build):
 // there is NO generated JS glue file. This drives the .wasm with the plain
 // `WebAssembly` API and a ~30-line WASI shim, so the entire browser
-// deliverable is one .wasm plus this file. Same engine, same ABI, same
+// deliverable is one .wasm plus this file. Same sanitizer core, same ABI, same
 // behaviour — just a different way of getting the bytes running.
 //
 //     import { HtmlSanitizer } from './htmlsanitizer-wasi.mjs';
@@ -22,7 +22,7 @@ export const URI_ATTRIBUTES = 5;
  *
  * The sanitizer is a pure string->string transform — no files, no sockets, no
  * clock that matters. These exist because wasi-libc references them, not
- * because the engine calls them on the sanitize path. Anything not listed is
+ * because the sanitizer core calls them on the sanitize path. Anything not listed is
  * proxied to a no-op returning 0 (WASI "success") rather than throwing, so an
  * unexercised libc corner can't take the page down.
  *

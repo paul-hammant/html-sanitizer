@@ -15,7 +15,7 @@ import std.os
 import std.string
 import std.file
 
-// Bump this DOWN as engine gaps close. Never up without an explanation in
+// Bump this DOWN as sanitizer core gaps close. Never up without an explanation in
 // docs/ganss-parity.md.
 const BASELINE_FAILING = 36
 

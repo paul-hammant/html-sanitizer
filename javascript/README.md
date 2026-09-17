@@ -3,7 +3,7 @@
 Cleans HTML of constructs that can lead to XSS.
 
 This package is **marshalling only**. The sanitizer itself — HTML5 tokenizer,
-DOM, CSS parser, URL resolver, allow-lists — is the pure-Aether engine in
+DOM, CSS parser, URL resolver, allow-lists — is the pure-Aether sanitizer core in
 `core/htmlsanitizer.ae`, shared by every language binding in this monorepo and
 reached through the `aether_hs_embed_*` C ABI (`core/embed.ae`).
 
@@ -63,7 +63,7 @@ s.allowedTags.clear().update(['b', 'i']);   // start from nothing
 
 ## Callbacks
 
-All seven engine hooks are wired. Each `on*` returns `this`, so they chain;
+All seven sanitizer core hooks are wired. Each `on*` returns `this`, so they chain;
 passing `null` clears a hook.
 
 ```js
@@ -93,7 +93,7 @@ read/write `value`.
 node --test test/conformance.test.js
 ```
 
-or, with the engine built for you:
+or, with the sanitizer core built for you:
 
 ```
 aeb javascript/.tests.ae
@@ -114,6 +114,6 @@ extras covering the remaining callback shapes. It uses `node:test` and
   `aether_hs_embed_free_string`. Declaring it `const char *` would let koffi
   decode-and-forget it, leaking every result.
 * Registered callbacks are kept in `_keepalive` and unregistered on `close()`.
-  An unregistered trampoline that the engine later calls crashes the process.
-* `onFilterUrl` must hand the engine a **malloc'd** string it then owns; the
+  An unregistered trampoline that the sanitizer core later calls crashes the process.
+* `onFilterUrl` must hand the sanitizer core a **malloc'd** string it then owns; the
   binding uses libc `strdup` for that.

@@ -1,12 +1,15 @@
+# session scratch (Claude Code scratchpad; never tracked)
+/scratchpad/
+
 # aeb build outputs
 /target/
 
-# the shared native engine is a build artifact (core/.build.ae rebuilds it)
+# the shared native sanitizer core is a build artifact (core/.build.ae rebuilds it)
 /core/native/*.so
 /core/native/*.dylib
 /core/native/*.dll
 
-# per-binding staged copies of the engine .so
+# per-binding staged copies of the sanitizer core .so
 **/native/*.so
 **/native/*.dylib
 **/native/*.dll

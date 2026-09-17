@@ -3,7 +3,7 @@
 /// This library is the ONLY place in the Dart binding that knows about the C
 /// ABI. Everything above it (`sanitizer.dart`) is idiomatic Dart over these
 /// symbols. No sanitizer logic lives here or anywhere else in this package —
-/// the engine is `core/htmlsanitizer.ae`, shared by every language binding.
+/// the sanitizer core is `core/htmlsanitizer.ae`, shared by every language binding.
 ///
 /// ## Naming
 ///
@@ -23,7 +23,7 @@
 /// ## Callback ABI
 ///
 /// Each hook receives the opaque `user_data` registered alongside it as its
-/// **first** argument; the engine's C trampolines (`core/_embed_support.c`)
+/// **first** argument; the sanitizer core's C trampolines (`core/_embed_support.c`)
 /// supply it. Integer arguments are C `int` (`ffi.Int`), *not* `long`.
 library;
 
@@ -115,7 +115,7 @@ typedef CbPostProcessDart = void Function(
 
 /// `char* f(void* ud, void* elem, const char* raw, const char* resolved)`
 ///
-/// Returns a malloc'd C string the engine takes ownership of, or the
+/// Returns a malloc'd C string the sanitizer core takes ownership of, or the
 /// `resolved` pointer unchanged to mean "no rewrite".
 typedef CbFilterUrlNative = ffi.Pointer<pkgffi.Utf8> Function(
     ffi.Pointer<ffi.Void>,
@@ -209,7 +209,7 @@ Iterable<String> libraryCandidates([String? explicit]) sync* {
   yield name;
 }
 
-/// A loaded engine: the `DynamicLibrary` plus every symbol bound once.
+/// A loaded sanitizer core: the `DynamicLibrary` plus every symbol bound once.
 ///
 /// Binding the symbols eagerly (rather than per call) keeps the hot path free
 /// of repeated `lookupFunction` work and turns a missing symbol into a clear
@@ -283,7 +283,7 @@ class Api {
 
   final ffi.DynamicLibrary lib;
 
-  /// The path the engine was actually loaded from.
+  /// The path the sanitizer core was actually loaded from.
   final String path;
 
   final _New hsNew;
@@ -323,7 +323,7 @@ class Api {
 
   static Api? _cached;
 
-  /// Load the engine, caching it process-wide when no explicit [path] is
+  /// Load the sanitizer core, caching it process-wide when no explicit [path] is
   /// given. Throws [StateError] with every candidate tried when it cannot.
   static Api open([String? path]) {
     if (path == null && _cached != null) return _cached!;
@@ -341,7 +341,7 @@ class Api {
       }
     }
     throw StateError(
-        'could not load the HtmlSanitizer engine ($defaultLibraryName). Set '
+        'could not load the HtmlSanitizer core ($defaultLibraryName). Set '
         'HTMLSANITIZER_LIB to its absolute path, or build it with:\n'
         '  cd core && ae build --emit=lib embed.ae --extra _embed_support.c '
         '-o native/$defaultLibraryName\n'
@@ -350,7 +350,7 @@ class Api {
 
   /// Copy an ABI-returned string out and free it through the ABI.
   ///
-  /// Every `char*` the engine returns is caller-owned; leaking it is the
+  /// Every `char*` the sanitizer core returns is caller-owned; leaking it is the
   /// single easiest mistake to make in any of these bindings. Every string
   /// result in this package goes through here.
   String takeString(ffi.Pointer<pkgffi.Utf8> p) {
@@ -364,6 +364,6 @@ class Api {
 }
 
 /// Read a borrowed `const char*` argument (a callback parameter) without
-/// freeing it — the engine owns those.
+/// freeing it — the sanitizer core owns those.
 String borrowString(ffi.Pointer<pkgffi.Utf8> p) =>
     p == ffi.nullptr ? '' : p.toDartString();

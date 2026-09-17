@@ -4,11 +4,11 @@
  * This file is the ONLY place in the Lua binding that knows about the C ABI.
  * Everything above it (lua/src/htmlsanitizer.lua) is idiomatic Lua over these
  * functions. No sanitizer logic lives here or anywhere else in this binding —
- * the engine is core/htmlsanitizer.ae, shared by every language binding.
+ * the sanitizer core is core/htmlsanitizer.ae, shared by every language binding.
  *
  * Lua has no FFI in its standard distribution (LuaJIT's `ffi` is not Lua 5.4),
  * so unlike the ctypes/Fiddle/dart:ffi bindings this one is a real C
- * extension. It still `dlopen`s the engine rather than linking it, so the
+ * extension. It still `dlopen`s the sanitizer core rather than linking it, so the
  * same HTMLSANITIZER_LIB resolution order as every other binding applies and
  * one .so serves them all.
  *
@@ -39,7 +39,7 @@
  * declaring `long` gets a 4-vs-8-byte mismatch on LP64.
  *
  * For the removing_* family a NON-ZERO return CANCELS the removal.
- * filter_url returns a malloc'd C string the engine takes ownership of.
+ * filter_url returns a malloc'd C string the sanitizer core takes ownership of.
  */
 
 #include <dlfcn.h>
@@ -70,7 +70,7 @@ typedef void* (*fn_node_ptr)(void*);
 typedef void  (*fn_attr_set_value)(void*, const char*);
 
 typedef struct {
-    void* handle;                     /* the dlopen'd engine */
+    void* handle;                     /* the dlopen'd sanitizer core */
     char  path[4096];                 /* where it came from */
 
     fn_new            hs_new;
@@ -119,7 +119,7 @@ static Engine ENGINE;                 /* process-wide; loaded once */
 
 /* The seven hooks, in the order the ABI declares them. Each Sanitizer keeps
  * its Lua handler functions in the registry, keyed by a per-sanitizer table,
- * so they cannot be collected while the engine can still call them. */
+ * so they cannot be collected while the sanitizer core can still call them. */
 enum {
     HOOK_REMOVING_TAG = 0,
     HOOK_REMOVING_ATTRIBUTE,
@@ -132,7 +132,7 @@ enum {
 };
 
 typedef struct Sanitizer {
-    void*        h;             /* the engine handle; NULL once closed */
+    void*        h;             /* the sanitizer core handle; NULL once closed */
     lua_State*   L;             /* the state that owns this sanitizer */
     int          hooks_ref;     /* LUA_REGISTRYINDEX ref to the handler table */
     unsigned int generation;    /* bumped per sanitize() — see NodeRef */
@@ -148,7 +148,7 @@ typedef struct {
     unsigned int generation;
 } NodeRef;
 
-/* ---- engine loading ---- */
+/* ---- sanitizer core loading ---- */
 
 static int load_symbols(lua_State* L, void* lib, const char* path) {
 #define SYM(field, name)                                                   \
@@ -157,7 +157,7 @@ static int load_symbols(lua_State* L, void* lib, const char* path) {
         if (!ENGINE.field) {                                               \
             dlclose(lib);                                                  \
             memset(&ENGINE, 0, sizeof(ENGINE));                            \
-            return luaL_error(L, "htmlsanitizer: engine at '%s' is missing "\
+            return luaL_error(L, "htmlsanitizer: sanitizer core at '%s' is missing "\
                                  "symbol %s", path, name);                 \
         }                                                                  \
     } while (0)
@@ -236,7 +236,7 @@ static int engine_load(lua_State* L, const char* explicit_path) {
         if (e) last_err = e;
     }
     return luaL_error(L,
-        "htmlsanitizer: could not load the engine (libhtmlsanitizer.so). Set "
+        "htmlsanitizer: could not load the sanitizer core (libhtmlsanitizer.so). Set "
         "HTMLSANITIZER_LIB to its absolute path, or build it with:\n"
         "  cd core && ae build --emit=lib embed.ae --extra _embed_support.c "
         "-o native/libhtmlsanitizer.so\nLast dlerror: %s", last_err);
@@ -244,7 +244,7 @@ static int engine_load(lua_State* L, const char* explicit_path) {
 
 /* ---- string helpers ---- */
 
-/* Push an ABI-returned string and FREE it. Every char* out of the engine is
+/* Push an ABI-returned string and FREE it. Every char* out of the sanitizer core is
  * caller-owned; this is the single place that ownership is discharged. */
 static void push_owned(lua_State* L, char* s) {
     if (!s) { lua_pushliteral(L, ""); return; }
@@ -281,7 +281,7 @@ static int l_new(lua_State* L) {
                                    "native sanitizer");
 
     /* The handler table. Anchored in the registry so the Lua functions
-     * survive as long as the engine can call them — the Lua equivalent of
+     * survive as long as the sanitizer core can call them — the Lua equivalent of
      * ctypes' keepalive list. */
     lua_newtable(L);
     s->hooks_ref = luaL_ref(L, LUA_REGISTRYINDEX);
@@ -500,7 +500,7 @@ static int l_attr_value(lua_State* L) {
 
 static int l_attr_set_value(lua_State* L) {
     NodeRef* r = check_ref(L, 1, ATTR_MT);
-    /* aether_hs_embed_attr_set_value COPIES engine-side, so handing it Lua's
+    /* aether_hs_embed_attr_set_value COPIES core-side, so handing it Lua's
      * own (collectable) string buffer is safe. */
     ENGINE.attr_set_value(r->p, luaL_checkstring(L, 2));
     return 0;
@@ -511,7 +511,7 @@ static int l_attr_set_value(lua_State* L) {
  * user_data is the Sanitizer*, so a trampoline can find the lua_State and the
  * registry-anchored handler table. Every integer is C `int`.
  *
- * A Lua error inside a handler must not longjmp across the engine's C frames,
+ * A Lua error inside a handler must not longjmp across the sanitizer core's C frames,
  * so each trampoline calls the handler with lua_pcall and, on error, falls
  * back to the safe default: "let the removal proceed" / "no URL rewrite".
  */
@@ -533,7 +533,7 @@ static int begin_call(Sanitizer* s, lua_State** out_L, int slot) {
 static int finish_call(lua_State* L, int nargs, int nres) {
     if (lua_pcall(L, nargs, nres, 0) != LUA_OK) {
         /* Swallowing is deliberate: there is no Lua frame to propagate to
-         * from inside an engine C callback. Surface it on stderr so a broken
+         * from inside a sanitizer core C callback. Surface it on stderr so a broken
          * handler is not silent. */
         const char* msg = lua_tostring(L, -1);
         fprintf(stderr, "htmlsanitizer: error in callback: %s\n",
@@ -575,7 +575,7 @@ static int cb_removing_style(void* ud, void* elem, const char* name,
     lua_State* L;
     if (!begin_call(s, &L, HOOK_REMOVING_STYLE)) return 0;
     push_ref(L, s, elem, NODE_MT);
-    /* name/value are BORROWED const char* — the engine owns them; copy into
+    /* name/value are BORROWED const char* — the sanitizer core owns them; copy into
      * Lua strings, never free. */
     lua_pushstring(L, name ? name : "");
     lua_pushstring(L, value ? value : "");
@@ -627,7 +627,7 @@ static char* cb_filter_url(void* ud, void* elem, const char* raw,
     const char* out = lua_tostring(L, -1);
     char* dup = out ? strdup(out) : (char*)NULL;
     lua_pop(L, 1);
-    /* The engine takes ownership of what we return; a nil/failed strdup means
+    /* The sanitizer core takes ownership of what we return; a nil/failed strdup means
      * "no rewrite". */
     return dup ? dup : (char*)resolved;
 }
@@ -659,7 +659,7 @@ static int register_hook(lua_State* L, int slot, fn_on_hook reg,
     lua_rawseti(L, -2, slot + 1);      /* [hooks] — anchored, cannot be GC'd */
     lua_pop(L, 1);
 
-    /* user_data is the Sanitizer*, round-tripped by the engine's trampoline
+    /* user_data is the Sanitizer*, round-tripped by the sanitizer core's trampoline
      * and handed back as each callback's FIRST argument. */
     reg(s->h, trampoline, s);
     return 0;

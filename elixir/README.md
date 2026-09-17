@@ -2,7 +2,7 @@
 
 Clean HTML of constructs that can lead to Cross-Site Scripting (XSS).
 
-This is a **thin Elixir surface** over the monorepo's one shared native engine
+This is a **thin Elixir surface** over the monorepo's one shared native sanitizer core
 — `core/native/libhtmlsanitizer.so`, compiled from pure Aether. It contains
 **no sanitizer logic**: every function marshals to an `aether_hs_embed_*` call
 across the C ABI described in `core/embed.ae`.
@@ -14,9 +14,9 @@ compiled exactly once, by `erlang/.build.ae`, and this project loads that
 already-compiled artifact. Every function here `defdelegate`s to
 `:htmlsanitizer_nif` — the very same module the Erlang and Gleam bindings load.
 
-One engine, one NIF, three languages. Shipping a second copy of the C here
+One sanitizer core, one NIF, three languages. Shipping a second copy of the C here
 (the usual `elixir_make` + `c_src/` arrangement) would mean a second `.so` to
-keep in step, which is exactly what this monorepo's one-engine rule forbids.
+keep in step, which is exactly what this monorepo's one-core rule forbids.
 
 ## Building and testing
 
@@ -45,9 +45,9 @@ HTMLSANITIZER_BEAM_APP=../erlang/_build/htmlsanitizer_nif mix test
 `test_helper.exs` also falls back to that in-tree path when the variable is
 unset, so a plain `mix test` works after the Erlang node has been built.
 
-### Finding the engine
+### Finding the sanitizer core
 
-The NIF `dlopen`s the engine. Resolution order: `$HTMLSANITIZER_LIB`, then
+The NIF `dlopen`s the sanitizer core. Resolution order: `$HTMLSANITIZER_LIB`, then
 `priv/` beside the NIF, then the OS loader's search path.
 
 ## Usage
@@ -95,7 +95,7 @@ HtmlSanitizer.sorted_items(s, :schemes)           # ["http", "https"]
 HtmlSanitizer.clear(s, :schemes)                  # start from nothing
 ```
 
-`items/2` returns the engine's own order (unspecified but stable between
+`items/2` returns the sanitizer core's own order (unspecified but stable between
 mutations); `sorted_items/2` when you want determinism.
 
 ### Flags
@@ -131,7 +131,7 @@ scheduler fairness.
 > **Checks 10 and 11 are not implemented, by design.**
 >
 > Check 10 (`on_removing_tag` cancels a removal) and check 11
-> (`on_filter_url` rewrites a URL) require the engine to call a *host* function
+> (`on_filter_url` rewrites a URL) require the sanitizer core to call a *host* function
 > synchronously from inside `sanitize`. On the BEAM that would mean calling
 > back into the VM from a NIF and blocking the scheduler thread until a process
 > replied — `enif_send` is one-way, and there is no safe synchronous

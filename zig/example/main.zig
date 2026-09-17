@@ -12,7 +12,7 @@ pub fn main() !void {
     const alloc = gpa.allocator();
 
     const out = std.io.getStdOut().writer();
-    try out.print("engine ABI version: {d}\n\n", .{hs.abiVersion()});
+    try out.print("sanitizer core ABI version: {d}\n\n", .{hs.abiVersion()});
 
     const s = try hs.Sanitizer.init(alloc);
     defer s.deinit();
@@ -52,7 +52,7 @@ pub fn main() !void {
         s.setKeepChildNodes(false);
     }
 
-    // --- a hook. `ctx` is how a Zig callback carries state: the engine hands
+    // --- a hook. `ctx` is how a Zig callback carries state: the sanitizer core hands
     //     it back as the first argument, so no closure allocation is needed.
     //     Returning TRUE from a removing_* hook CANCELS the removal. ---
     {
@@ -81,7 +81,7 @@ pub fn main() !void {
     }
 
     // --- the string-returning hook: return the URL to use. The binding
-    //     copies it into an engine-owned buffer; you never free it. ---
+    //     copies it into an core-owned buffer; you never free it. ---
     {
         s.setHooks(.{
             .filter_url = struct {

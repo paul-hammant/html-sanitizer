@@ -1,5 +1,5 @@
 // Ruby binding tests (Fiddle). The loader honors HTMLSANITIZER_LIB, which we
-// point at the shared engine artifact this node deps.
+// point at the shared sanitizer core artifact this node deps.
 import bldr
 import std.os
 

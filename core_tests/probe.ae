@@ -1,4 +1,4 @@
-// Integration test for the htmlsanitizer engine.
+// Integration test for the htmlsanitizer core.
 //
 // NB on style-attribute expectations: the serializer emits `a: 1; b: 2` with
 // NO trailing semicolon, matching upstream C# HtmlSanitizer. These

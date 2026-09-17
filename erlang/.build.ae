@@ -7,7 +7,7 @@
 //     _build/htmlsanitizer_nif/ebin/htmlsanitizer_nif.beam
 //     _build/htmlsanitizer_nif/ebin/htmlsanitizer_nif.app
 //     _build/htmlsanitizer_nif/priv/htmlsanitizer_nif.so
-//     _build/htmlsanitizer_nif/priv/libhtmlsanitizer.so   (the engine)
+//     _build/htmlsanitizer_nif/priv/libhtmlsanitizer.so   (the sanitizer core)
 //
 // elixir/ and gleam/ bldr.dep THIS node and put `erlang/_build` on ERL_LIBS,
 // which is how OTP finds an application; they then load the very same
@@ -20,7 +20,7 @@
 // the deliberate omission of -lhtmlsanitizer from the NIF link line (a
 // DT_NEEDED there kills the BEAM inside the dynamic linker instead of
 // reporting a clean load error), erlc into ebin/, the verbatim app.src copy,
-// and staging the engine into priv/. A missing toolchain is a first-class
+// and staging the sanitizer core into priv/. A missing toolchain is a first-class
 // SKIP, counted as such in telemetry.
 
 import bldr

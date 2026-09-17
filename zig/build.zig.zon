@@ -1,8 +1,8 @@
 // Package manifest, so another Zig project can depend on this binding by URL
 // or path. There are no `.dependencies` and there never will be: the binding
-// needs libc and the engine .so, neither of which is a Zig package.
+// needs libc and the sanitizer core .so, neither of which is a Zig package.
 //
-// A consumer still has to link the engine itself — a Zig module carries
+// A consumer still has to link the sanitizer core itself — a Zig module carries
 // source, not link flags. See the README's "Using it from another project".
 .{
     // Zig 0.16 requires an enum literal here (it was a string through 0.13).

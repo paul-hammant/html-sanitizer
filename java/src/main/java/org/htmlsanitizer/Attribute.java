@@ -44,7 +44,7 @@ public final class Attribute {
      * it, so the buffer must outlive the callback. A confined {@link Arena}
      * would be freed at the end of this method and leave the DOM pointing at
      * released memory; a libc-{@code malloc}'d copy stays valid for the rest
-     * of the sanitize run. It is not freed here — the engine owns it once
+     * of the sanitize run. It is not freed here — the sanitizer core owns it once
      * stored, the same contract as {@code on_filter_url}'s return value.
      */
     public void setValue(String v) {

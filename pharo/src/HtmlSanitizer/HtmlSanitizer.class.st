@@ -16,7 +16,7 @@ HtmlSanitizer during: [ :s | s sanitize: '<div>x</div>' ].
 
 ## No sanitizer logic here
 
-I am **marshalling only**. The engine — HTML5 tokenizer, DOM, CSS parser, URL
+I am **marshalling only**. The sanitizer core — HTML5 tokenizer, DOM, CSS parser, URL
 resolver, allow-lists — is the pure-Aether `core/htmlsanitizer.ae`, shared by
 every language binding in this monorepo and reached through the
 `aether_hs_embed_*` C ABI (`core/embed.ae`). Naming: `core/embed.ae` declares
@@ -34,13 +34,13 @@ is what the FFI calls below name.
 
 ## Callbacks
 
-The engine's C trampolines pass the registered `user_data` as the **first**
+The sanitizer core's C trampolines pass the registered `user_data` as the **first**
 argument, and every integer is a C `int` (not `long`). For the `removing*`
 family a **non-zero return CANCELS the removal** — it keeps the node. The
 `when*` methods below take a block and hide the inversion behind a name that
 says which way it goes.
 
-I am **not thread-safe**: the engine calls hooks re-entrantly during
+I am **not thread-safe**: the sanitizer core calls hooks re-entrantly during
 `sanitize`.
 "
 Class {
@@ -101,7 +101,7 @@ HtmlSanitizer class >> selectorFor: aSymbol [
 { #category : 'constants' }
 HtmlSanitizer class >> reasonSymbolFor: anInteger [
 	"The ABI removal-reason code as a Symbol, or #unknown for a code this
-	 build does not know. The constants are append-only, so a newer engine is
+	 build does not know. The constants are append-only, so a newer sanitizer core is
 	 not an error."
 
 	^ anInteger
@@ -168,7 +168,7 @@ HtmlSanitizer class >> sanitize: anHtmlString [
 
 { #category : 'accessing' }
 HtmlSanitizer class >> abiVersion [
-	"The engine's ABI revision. A class-side convenience: it needs no handle."
+	"The sanitizer core's ABI revision. A class-side convenience: it needs no handle."
 
 	^ self primAbiVersion
 ]
@@ -352,7 +352,7 @@ HtmlSanitizer >> initialize [
 
 { #category : 'lifecycle' }
 HtmlSanitizer >> close [
-	"Release the native handle. Freeing the engine handle also releases its
+	"Release the native handle. Freeing the sanitizer core handle also releases its
 	 callback boxes, so no registered callback can fire afterwards — which is
 	 what makes dropping the ExternalFunction references here safe.
 
@@ -407,7 +407,7 @@ HtmlSanitizer >> takeString: aPointer [
 
 { #category : 'private - strings' }
 HtmlSanitizer >> readBorrowedString: aPointer [
-	"Read a const char* the engine handed us. NOT owned by us — the engine
+	"Read a const char* the sanitizer core handed us. NOT owned by us — the sanitizer core
 	 keeps it, so there is nothing to free."
 
 	(aPointer isNil or: [ aPointer isNull ]) ifTrue: [ ^ '' ].
@@ -418,7 +418,7 @@ HtmlSanitizer >> readBorrowedString: aPointer [
 HtmlSanitizer >> decodeUtf8: aPointer [
 	"Decode a NUL-terminated C string as UTF-8.
 
-	 The engine speaks UTF-8 (conformance check 04 is `café ☕` precisely to
+	 The sanitizer core speaks UTF-8 (conformance check 04 is `café ☕` precisely to
 	 pin this down). `readString` is NOT the right tool here: it answers the
 	 raw bytes, so comparing its result to a String fails even for pure ASCII,
 	 and a non-ASCII byte would be mangled rather than decoded.
@@ -586,7 +586,7 @@ HtmlSanitizer >> replace: aCollection on: aSelectorSymbol [
 
 { #category : 'private - callbacks' }
 HtmlSanitizer >> rememberCallback: aCallback at: aKey [
-	"Keep a strong reference for as long as the engine might call it."
+	"Keep a strong reference for as long as the sanitizer core might call it."
 
 	callbacks at: aKey put: aCallback.
 	^ aCallback
@@ -748,7 +748,7 @@ HtmlSanitizer >> whenFilteringUrl: aBlock [
 	 Answering nil means 'no rewrite' — the resolved URL is used — because a
 	 block falling off the end should not silently strip every URL.
 
-	 OWNERSHIP: the engine takes the returned buffer and frees it with libc
+	 OWNERSHIP: the sanitizer core takes the returned buffer and frees it with libc
 	 free, so it must be a libc-malloc'd copy. `ExternalAddress allocate:` is
 	 malloc underneath, which is the matching allocator.
 
@@ -759,7 +759,7 @@ HtmlSanitizer >> whenFilteringUrl: aBlock [
 	 value it is worse: with `char *` the callback tries to marshal the
 	 ExternalAddress we answer as though it were a Smalltalk String, and dies
 	 with `Character doesNotUnderstand: #isExternalAddress` mid-sanitize.
-	 Returning a raw `void *` hands the engine exactly the pointer it expects."
+	 Returning a raw `void *` hands the sanitizer core exactly the pointer it expects."
 
 	| cb |
 	self checkOpen.
@@ -786,7 +786,7 @@ HtmlSanitizer >> whenFilteringUrl: aBlock [
 
 { #category : 'private - strings' }
 HtmlSanitizer >> mallocString: aString [
-	"A libc-malloc'd, NUL-terminated copy of aString, which the ENGINE then
+	"A libc-malloc'd, NUL-terminated copy of aString, which the sanitizer core then
 	 owns and frees. Not freed here — that is the on_filter_url contract, the
 	 same one attr_set_value uses."
 

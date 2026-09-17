@@ -1,9 +1,9 @@
 // Nim binding tests (importc + a real link). Like the Go/cgo binding and
 // unlike the dlopen-based ones (Python/ctypes, Ruby/Fiddle, PHP/FFI), Nim
-// LINKS the engine, so the .so must exist at BUILD time as well as run time.
+// LINKS the sanitizer core, so the .so must exist at BUILD time as well as run time.
 //
 // The {.passL.} in nim/src/htmlsanitizer.nim already points -L/-rpath at both
-// nim/native and ../core/native; we dep the shared engine node and stage its
+// nim/native and ../core/native; we dep the shared sanitizer core node and stage its
 // artifact into nim/native so the link and the rpath both resolve no matter
 // where aeb put the artifact.
 import bldr
@@ -19,7 +19,7 @@ aeb(cap) {
         _m = os.system("mkdir -p \"${dest}\"")
         cp = os.system("cp -f \"${lib}\" \"${dest}/libhtmlsanitizer.so\"")
         if cp != 0 {
-            println("nim: could not stage the engine into nim/native")
+            println("nim: could not stage the sanitizer core into nim/native")
             return 1
         }
     

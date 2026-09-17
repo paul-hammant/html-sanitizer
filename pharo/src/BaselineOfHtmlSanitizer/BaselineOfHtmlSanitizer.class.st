@@ -12,7 +12,7 @@ Metacello new
 
 The package has **no external dependencies** — UnifiedFFI and SUnit are both
 in the base image. That is deliberate: the binding is marshalling only, and
-the engine it marshals to is the shared `core/htmlsanitizer.ae`, loaded at
+the sanitizer core it marshals to is the shared `core/htmlsanitizer.ae`, loaded at
 run time as a shared library rather than pulled in as a Pharo package.
 "
 Class {

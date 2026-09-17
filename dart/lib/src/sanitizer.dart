@@ -1,4 +1,4 @@
-/// The idiomatic Dart surface over the HtmlSanitizer engine.
+/// The idiomatic Dart surface over the HtmlSanitizer core.
 ///
 /// Carries no sanitizer logic — every member here marshals to an
 /// `aether_hs_embed_*` call in `native.dart`.
@@ -10,7 +10,7 @@ import 'package:ffi/ffi.dart' as pkgffi;
 
 import 'native.dart' as n;
 
-/// Why the engine is about to remove something.
+/// Why the sanitizer core is about to remove something.
 enum Reason {
   notAllowedTag(n.kReasonNotAllowedTag),
   notAllowedAttribute(n.kReasonNotAllowedAttribute),
@@ -74,7 +74,7 @@ class Attribute {
   String get value => _api.takeString(_api.attrValue(_ptr));
 
   /// Rewrite the attribute's value in place (e.g. to canonicalise a URL
-  /// rather than remove the attribute). The engine copies the string, so the
+  /// rather than remove the attribute). The sanitizer core copies the string, so the
   /// transient buffer allocated here is safe to free immediately.
   set value(String v) {
     final p = v.toNativeUtf8();
@@ -130,9 +130,9 @@ class Node {
   String toString() => 'Node(kind: ${kind.name}, name: $name)';
 }
 
-/// A set-like view over one of the engine's six policy lists.
+/// A set-like view over one of the sanitizer core's six policy lists.
 ///
-/// Every operation reads or writes the engine's own set — there is no Dart
+/// Every operation reads or writes the sanitizer core's own set — there is no Dart
 /// mirror to fall out of sync.
 class AllowList {
   AllowList(this._owner, this._which);
@@ -198,7 +198,7 @@ class AllowList {
 
   bool get isNotEmpty => length != 0;
 
-  /// The items, in the engine's own (unspecified but stable) order.
+  /// The items, in the sanitizer core's own (unspecified but stable) order.
   List<String> toList() {
     _owner._checkOpen();
     final api = _owner._api;
@@ -252,7 +252,7 @@ typedef FilterUrlHandler = String Function(
 /// **not** safe for concurrent use — the native handle carries mutable policy
 /// and hook state.
 class HtmlSanitizer {
-  /// Create a sanitizer with the engine's secure defaults populated.
+  /// Create a sanitizer with the sanitizer core's secure defaults populated.
   ///
   /// [nativeLibrary] overrides the library search; see
   /// `native.dart`'s resolution order.
@@ -274,33 +274,33 @@ class HtmlSanitizer {
 
   /// Every live `NativeCallable`. Dart's FFI callbacks must be kept alive and
   /// explicitly closed — dropping the reference leaks the trampoline, and
-  /// closing it while the engine can still call it crashes the process. The
-  /// engine can call a hook until it is replaced or the handle is freed, so
+  /// closing it while the sanitizer core can still call it crashes the process. The
+  /// sanitizer core can call a hook until it is replaced or the handle is freed, so
   /// these are closed only in [close] (and, for a replaced hook, once the
-  /// engine has been told to forget it).
+  /// sanitizer core has been told to forget it).
   final List<ffi.NativeCallable> _keepalive = [];
 
   bool _closed = false;
 
-  /// The engine's allowed tag names.
+  /// The sanitizer core's allowed tag names.
   late final AllowList allowedTags;
 
-  /// The engine's allowed attribute names.
+  /// The sanitizer core's allowed attribute names.
   late final AllowList allowedAttributes;
 
-  /// The engine's allowed CSS property names.
+  /// The sanitizer core's allowed CSS property names.
   late final AllowList allowedCssProperties;
 
-  /// The engine's allowed URL schemes.
+  /// The sanitizer core's allowed URL schemes.
   late final AllowList allowedSchemes;
 
-  /// The engine's allowed CSS class names.
+  /// The sanitizer core's allowed CSS class names.
   late final AllowList allowedClasses;
 
-  /// Which attributes the engine treats as carrying a URL.
+  /// Which attributes the sanitizer core treats as carrying a URL.
   late final AllowList uriAttributes;
 
-  /// The path the engine `.so` was loaded from.
+  /// The path the sanitizer core `.so` was loaded from.
   String get nativeLibraryPath => _api.path;
 
   void _checkOpen() {
@@ -312,7 +312,7 @@ class HtmlSanitizer {
     if (_closed) return;
     _closed = true;
     _api.hsFree(_handle);
-    // Only now is it certain the engine can no longer invoke a hook.
+    // Only now is it certain the sanitizer core can no longer invoke a hook.
     for (final cb in _keepalive) {
       cb.close();
     }
@@ -381,7 +381,7 @@ class HtmlSanitizer {
     _api.setAllowDataAttributes(_handle, on ? 1 : 0);
   }
 
-  /// The engine's ABI revision.
+  /// The sanitizer core's ABI revision.
   int get abiVersion => _api.abiVersion();
 
   // ---- callbacks ----
@@ -403,7 +403,7 @@ class HtmlSanitizer {
     _keepalive.add(cb);
     // `user_data` is unused on the Dart side: an isolate-local
     // NativeCallable already closes over the handler, so there is nothing to
-    // look up. It is still round-tripped by the engine's trampoline.
+    // look up. It is still round-tripped by the sanitizer core's trampoline.
     hook(_handle, cb.nativeFunction.cast<ffi.Void>(), ffi.nullptr);
   }
 
@@ -511,7 +511,7 @@ class HtmlSanitizer {
   /// `resolved` argument unchanged for no rewrite, or `''` to drop the
   /// attribute.
   ///
-  /// The returned string is copied into a malloc'd C buffer the engine takes
+  /// The returned string is copied into a malloc'd C buffer the sanitizer core takes
   /// ownership of; you do not free it.
   HtmlSanitizer onFilterUrl(FilterUrlHandler? handler) {
     if (handler == null) {
@@ -523,22 +523,22 @@ class HtmlSanitizer {
           ffi.Pointer<pkgffi.Utf8> raw, ffi.Pointer<pkgffi.Utf8> resolved) {
         final out = handler(
             Node(_api, elem), n.borrowString(raw), n.borrowString(resolved));
-        // The engine frees this; allocate with malloc, not Dart's arena.
+        // The sanitizer core frees this; allocate with malloc, not Dart's arena.
         return out.toNativeUtf8(allocator: pkgffi.malloc);
       },
       // No `exceptionalReturn` here: Dart forbids one for a pointer-returning
       // native callback (it defaults to nullptr). A handler that throws
-      // therefore hands the engine a null URL, so keep handlers total.
+      // therefore hands the sanitizer core a null URL, so keep handlers total.
     );
     _register(_api.onFilterUrl, cb);
     return this;
   }
 }
 
-/// One-shot: sanitize [html] with the engine's defaults.
+/// One-shot: sanitize [html] with the sanitizer core's defaults.
 String sanitize(String html, [String baseUrl = '']) =>
     HtmlSanitizer.use((s) => s.sanitize(html, baseUrl));
 
-/// One-shot: sanitize [html] as a full document, with the engine's defaults.
+/// One-shot: sanitize [html] as a full document, with the sanitizer core's defaults.
 String sanitizeDocument(String html, [String baseUrl = '']) =>
     HtmlSanitizer.use((s) => s.sanitizeDocument(html, baseUrl));

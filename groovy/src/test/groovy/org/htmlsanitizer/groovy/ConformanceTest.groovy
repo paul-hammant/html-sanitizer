@@ -11,12 +11,12 @@ import static org.htmlsanitizer.groovy.HtmlSanitizers.sanitizing
  * Proves the <b>Groovy layer</b> marshals every value shape correctly. Since
  * that layer sits on the Java binding rather than on its own FFI, what this
  * suite really pins down is that the Groovy DSL — closure callbacks, the
- * SanitizerSpec verbs, the extension-module operators — reaches the same engine
+ * SanitizerSpec verbs, the extension-module operators — reaches the same sanitizer core
  * behaviour the Java and Python suites see. A closure coerced to the wrong SAM
  * type, or a {@code <<} that mutated a copy instead of the live view, would
  * fail here and nowhere else.
  *
- * It is NOT a sanitizer test suite — the behavioural cases live in the engine's
+ * It is NOT a sanitizer test suite — the behavioural cases live in the sanitizer core's
  * own tests and run once, in Aether.
  *
  * A plain main method, not Spock/JUnit, for the same reason the Java suite is:

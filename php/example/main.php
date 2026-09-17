@@ -1,7 +1,7 @@
 <?php
 
 /**
- * A short tour of the PHP binding. Run it with the engine built:
+ * A short tour of the PHP binding. Run it with the sanitizer core built:
  *
  *   cd core && ae build --emit=lib embed.ae --extra _embed_support.c \
  *       -o native/libhtmlsanitizer.so
@@ -27,7 +27,7 @@ use HtmlSanitization\Node;
 
 $s = new HtmlSanitizer();
 
-printf("engine: %s (ABI v%d)\n", $s->nativeLibraryPath() ?? '(unknown)', $s->abiVersion());
+printf("sanitizer core: %s (ABI v%d)\n", $s->nativeLibraryPath() ?? '(unknown)', $s->abiVersion());
 
 // 1. the defaults
 echo $s->sanitize('<div onclick="evil()">Hello <script>x</script></div>'), "\n";

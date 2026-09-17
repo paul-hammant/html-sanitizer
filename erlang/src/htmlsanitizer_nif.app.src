@@ -10,7 +10,7 @@
 %% resource owned by whoever created it, not a named process, so nothing here
 %% needs an application controller.
 {application, htmlsanitizer_nif,
- [{description, "HTML sanitizer NIF over the shared Aether engine (canonical BEAM binding)"},
+ [{description, "HTML sanitizer NIF over the shared Aether sanitizer core (canonical BEAM binding)"},
   {vsn, "0.1.0"},
   {registered, []},
   {applications, [kernel, stdlib]},

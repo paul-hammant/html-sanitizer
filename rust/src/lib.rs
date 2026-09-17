@@ -7,7 +7,7 @@
 //! assert_eq!(s.sanitize(r#"<div onclick="alert(1)">Hello</div>"#), "<div>Hello</div>");
 //! ```
 //!
-//! This crate carries **no sanitizer logic**. The engine — HTML5 tokenizer,
+//! This crate carries **no sanitizer logic**. The sanitizer core — HTML5 tokenizer,
 //! DOM, CSS parser, URL resolver, allow-lists — is the pure-Aether
 //! `core/htmlsanitizer.ae`, shared by every language binding in this monorepo
 //! and reached over the `aether_hs_embed_*` C ABI. Everything here is
@@ -30,7 +30,7 @@ use native::Api;
 
 /// A DOM attribute, borrowed for the duration of a callback.
 ///
-/// The lifetime ties it to the callback's borrow of the engine: the DOM is
+/// The lifetime ties it to the callback's borrow of the sanitizer core: the DOM is
 /// freed when `sanitize` returns, so an `Attribute` cannot outlive the hook
 /// that received it.
 pub struct Attribute<'a> {
@@ -130,9 +130,9 @@ impl std::fmt::Debug for Node<'_> {
 
 /// The boxed Rust closures behind the seven hooks.
 ///
-/// Each is kept alive in the [`HtmlSanitizer`] for as long as the engine can
+/// Each is kept alive in the [`HtmlSanitizer`] for as long as the sanitizer core can
 /// call it; the raw pointer we hand the ABI as `user_data` points at one of
-/// these boxes. Dropping one while the engine still holds the pointer would
+/// these boxes. Dropping one while the sanitizer core still holds the pointer would
 /// be a use-after-free, so they are only replaced or dropped in
 /// `install_*`/`Drop`, never while `sanitize` is running.
 #[derive(Default)]
@@ -173,12 +173,12 @@ pub struct HtmlSanitizer {
 }
 
 impl HtmlSanitizer {
-    /// Load the engine and create a sanitizer with the secure defaults.
+    /// Load the sanitizer core and create a sanitizer with the secure defaults.
     pub fn new() -> Result<HtmlSanitizer, Error> {
         HtmlSanitizer::with_library(None)
     }
 
-    /// As [`HtmlSanitizer::new`], but loading the engine from an explicit path.
+    /// As [`HtmlSanitizer::new`], but loading the sanitizer core from an explicit path.
     pub fn with_library(path: Option<&Path>) -> Result<HtmlSanitizer, Error> {
         let api = Box::new(Api::load(path)?);
         let handle = unsafe { (api.new)() };
@@ -198,7 +198,7 @@ impl HtmlSanitizer {
         })
     }
 
-    /// The engine's ABI revision.
+    /// The sanitizer core's ABI revision.
     pub fn abi_version(&self) -> i32 {
         unsafe { (self.api.abi_version)() }
     }
@@ -380,7 +380,7 @@ impl HtmlSanitizer {
     /// `handler(node, raw_url, resolved_url) -> String`
     ///
     /// Return the URL to use; an empty string drops the attribute. The result
-    /// is copied into a malloc'd buffer the engine takes ownership of.
+    /// is copied into a malloc'd buffer the sanitizer core takes ownership of.
     pub fn on_filter_url<F>(&mut self, handler: F) -> &mut Self
     where
         F: FnMut(&Node, &str, &str) -> String + 'static,
@@ -397,7 +397,7 @@ impl HtmlSanitizer {
 impl Drop for HtmlSanitizer {
     fn drop(&mut self) {
         if !self.handle.is_null() {
-            // Frees the engine's callback boxes too, so no trampoline can be
+            // Frees the sanitizer core's callback boxes too, so no trampoline can be
             // invoked after this point — which is what makes dropping
             // `hooks` immediately afterwards sound.
             unsafe { (self.api.free)(self.handle) };
@@ -406,12 +406,12 @@ impl Drop for HtmlSanitizer {
     }
 }
 
-// A sanitizer owns its handle exclusively; the engine has no global state.
-// It is NOT `Sync`, because the hook closures are `FnMut` and the engine
+// A sanitizer owns its handle exclusively; the sanitizer core has no global state.
+// It is NOT `Sync`, because the hook closures are `FnMut` and the sanitizer core
 // calls them re-entrantly during `sanitize`.
 unsafe impl Send for HtmlSanitizer {}
 
-/// Set-like view over one of the engine's six policy lists.
+/// Set-like view over one of the sanitizer core's six policy lists.
 pub struct AllowList<'a> {
     owner: &'a HtmlSanitizer,
     which: c_int,
@@ -491,7 +491,7 @@ impl std::fmt::Debug for AllowList<'_> {
 // `CallbackCtx` from `user_data`, rebuilds the borrowed Node/Attribute views,
 // and dispatches into the boxed closure. `ud` is always the pointer we
 // registered, so the dereference is sound for as long as the sanitizer lives
-// — and the engine cannot call a hook after `free`, which is what `Drop`
+// — and the sanitizer core cannot call a hook after `free`, which is what `Drop`
 // relies on.
 
 /// Recover `(api, hooks)` from the `user_data` the ABI hands back.
@@ -599,6 +599,6 @@ unsafe extern "C" fn tramp_filter_url(
     };
     let (r, s) = unsafe { (native::read_string(raw), native::read_string(resolved)) };
     let out = f(&Node::new(api, elem), &r, &s);
-    // The engine takes ownership of this buffer and frees it with libc free.
+    // The sanitizer core takes ownership of this buffer and frees it with libc free.
     native::malloc_cstring(&out)
 }

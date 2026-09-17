@@ -8,7 +8,7 @@ import java.util.Iterator;
 import java.util.List;
 
 /**
- * A set-like view over one of the engine's six policy lists.
+ * A set-like view over one of the sanitizer core's six policy lists.
  *
  * <p>Obtained from {@link HtmlSanitizer#allowedTags()} and friends. Mutations
  * go straight through to the native sanitizer — there is no local copy.

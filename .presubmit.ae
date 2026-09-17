@@ -1,7 +1,7 @@
 // Named target set: everything that must be green before a push.
 //
 // A set's body only ever says no — it declares edges and nothing else. The
-// engine nodes come first in spirit (aeb topo-sorts them first in fact,
+// sanitizer core nodes come first in spirit (aeb topo-sorts them first in fact,
 // since every binding deps core/.build.ae).
 //
 // Bindings whose toolchain is absent skip loudly rather than failing, so this
@@ -12,7 +12,7 @@ import bldr
 
 aeb(cap) {
     bldr.build() {
-        // meta.desc("engine + C ABI + every language binding")
+        // meta.desc("sanitizer core + C ABI + every language binding")
         //
         // Parked, not deleted. The Shape A codemod rewrote this call site to
         // the b-free form, but lib/meta itself was NOT converted — it is the
@@ -24,7 +24,7 @@ aeb(cap) {
         // which we do not use, so parking it costs nothing.
         // Filed as aeb/asks/lib-meta-missed-by-the-shape-a-sweep.md.
     
-        // The engine and its two gates.
+        // The sanitizer core and its two gates.
         dep("core_tests/.tests.ae")
         dep("core_tests/.abi.ae")
         dep("core_tests/.xss.ae")
@@ -48,7 +48,7 @@ aeb(cap) {
         dep("zig/.tests.ae")
         dep("pharo/.tests.ae")
     
-        // Browser target: recompiles the engine to wasm32 rather than loading the .so.
+        // Browser target: recompiles the sanitizer core to wasm32 rather than loading the .so.
         dep("wasm/.tests.ae")
     
         // BEAM family — erlang owns the NIF; elixir and gleam share it.

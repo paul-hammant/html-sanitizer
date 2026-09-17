@@ -73,7 +73,7 @@ def cs_string_to_aether(lit):
     return '"' + esc + '"'
 
 
-# --- config setters we can express on our engine -------------------------
+# --- config setters we can express on our sanitizer core -------------------------
 # C# property -> (kind, aether statement template)
 SET_BOOL = {
     'KeepChildNodes': 's.keep_child_nodes = {v}',
@@ -262,7 +262,7 @@ def parse_body(name, body, theory_param=None):
                   'new HtmlSanitizer()', body)
 
     # `new HtmlSanitizer { DisallowCssPropertyValue = new Regex(@"...") }` —
-    # an object initialiser we CAN model: the engine's
+    # an object initialiser we CAN model: the sanitizer core's
     # disallow_css_property_value_regex is fully wired (setting it drops
     # matching declarations), it is just not reachable over the C ABI.
     dis = re.search(

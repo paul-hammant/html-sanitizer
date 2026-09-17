@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# The engine lives in ../core/native; point the loader at it for in-tree runs
+# The sanitizer core lives in ../core/native; point the loader at it for in-tree runs
 # unless the caller (aeb, CI) already set HTMLSANITIZER_LIB.
 ENV["HTMLSANITIZER_LIB"] ||= begin
   candidate = File.expand_path("../core/native/libhtmlsanitizer.so", __dir__)
@@ -17,15 +17,15 @@ rescue LoadError
   end
 end
 
-desc "Build the shared native engine into ../core/native"
-task :engine do
+desc "Build the shared native sanitizer core into ../core/native"
+task :sanitizer core do
   root = File.expand_path("..", __dir__)
   sh "cd #{root}/core && ae build --emit=lib embed.ae --extra _embed_support.c " \
      "-o native/libhtmlsanitizer.so"
 end
 
-desc "Stage the engine into ruby/native/ so the built gem bundles it"
-task stage_native: :engine do
+desc "Stage the sanitizer core into ruby/native/ so the built gem bundles it"
+task stage_native: :sanitizer core do
   root = File.expand_path("..", __dir__)
   require "fileutils"
   FileUtils.mkdir_p("#{__dir__}/native")

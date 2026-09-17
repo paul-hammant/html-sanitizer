@@ -1,4 +1,4 @@
-// core/embed.ae — the C ABI over the pure-Aether HtmlSanitizer engine.
+// core/embed.ae — the C ABI over the pure-Aether HtmlSanitizer core.
 //
 // Build it as a shared library and dlsym/link the exports:
 //
@@ -56,7 +56,7 @@ hs_embed_new() -> ptr {
 }
 
 // Release the sanitizer and everything it owns. Frees each callback box's
-// smuggled env first (the engine's free() releases the boxes themselves).
+// smuggled env first (the sanitizer core's free() releases the boxes themselves).
 // NULL-safe, idempotent from the host's perspective as long as the host
 // drops its handle afterwards.
 hs_embed_free(h: ptr) {
@@ -93,7 +93,7 @@ hs_embed_sanitize(h: ptr, html: string, base_url: string) -> string {
 }
 
 // Sanitize a full HTML document. Currently the same path as sanitize()
-// (the engine treats them alike); kept as a distinct export so bindings can
+// (the sanitizer core treats them alike); kept as a distinct export so bindings can
 // expose the C# library's two-method surface without drifting later.
 hs_embed_sanitize_document(h: ptr, html: string, base_url: string) -> string {
     if h == null { return hs_raw_dup("") }
@@ -134,7 +134,7 @@ hs_embed_normalize(h: ptr, html: string, base_url: string) -> string {
 //
 // What the last sanitize() dropped, and why. Deliberately a pull API rather
 // than only the on_removing_* callbacks: the WASM and BEAM bindings cannot
-// hand the engine a function pointer at all, and a caller who wants a summary
+// hand the sanitizer core a function pointer at all, and a caller who wants a summary
 // should not have to install a hook to get one.
 //
 // Read after a sanitize call; the report describes THAT call.
@@ -310,7 +310,7 @@ hs_embed_item_at(h: ptr, which: int, index: int) -> string {
 // clears the hook.
 //
 // Host-side signatures (C). NOTE the widths: `int`, NOT `long`. Codegen
-// emits the engine's closure calls as `int(*)(...)`, so a host declaring
+// emits the sanitizer core's closure calls as `int(*)(...)`, so a host declaring
 // `long` gets a 4-vs-8-byte mismatch on LP64 — garbage `reason` values and
 // corrupted stack arguments. _embed_support.c's trampolines are the
 // authority; core_tests/abi_smoke.c is a working example of each.
@@ -327,7 +327,7 @@ hs_embed_item_at(h: ptr, which: int, index: int) -> string {
 // For the three `removing_*` hooks and removing_comment, a NON-ZERO return
 // CANCELS the removal (i.e. keeps the node/attribute/property). filter_url
 // returns a replacement URL — return the `resolved` argument unchanged for
-// "no rewrite", "" to drop the attribute, or a malloc'd string the engine
+// "no rewrite", "" to drop the attribute, or a malloc'd string the sanitizer core
 // takes ownership of.
 //
 // The node/attr pointers are borrowed *DomNode / *DomAttr — valid only for
@@ -477,7 +477,7 @@ hs_embed_attr_set_value(a: ptr, value: string) {
     // moment the callback returns (a Java confined Arena, a transient Python
     // bytes, a Go C.CString the caller frees). Storing it raw would leave the
     // DOM pointing at freed memory. string.concat with "" gives us an
-    // engine-owned string, which is what every internal write of .value does.
+    // core-owned string, which is what every internal write of .value does.
     at.value = string.concat("", value)
 }
 
@@ -485,7 +485,7 @@ hs_embed_attr_set_value(a: ptr, value: string) {
 
 // ABI revision of this library. Bump when a symbol is ADDED (never when one
 // changes meaning — that is not allowed). A binding can check this to fail
-// fast against an engine older than the features it expects.
+// fast against a sanitizer core older than the features it expects.
 hs_embed_abi_version() -> int {
     return 1
 }

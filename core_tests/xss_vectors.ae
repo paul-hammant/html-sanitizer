@@ -1,4 +1,4 @@
-// XSS bypass-vector regression suite for the engine.
+// XSS bypass-vector regression suite for the sanitizer core.
 //
 // core_tests/probe.ae proves the API behaves as the C# library does. This
 // file asks the different question a security library actually has to answer:

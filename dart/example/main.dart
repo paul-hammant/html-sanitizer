@@ -1,4 +1,4 @@
-// A short tour of the Dart binding. Run it with the engine built:
+// A short tour of the Dart binding. Run it with the sanitizer core built:
 //
 //   cd core && ae build --emit=lib embed.ae --extra _embed_support.c \
 //       -o native/libhtmlsanitizer.so
@@ -9,7 +9,7 @@ import 'package:htmlsanitizer/htmlsanitizer.dart';
 void main() {
   final s = HtmlSanitizer();
   try {
-    print('engine: ${s.nativeLibraryPath} (ABI v${s.abiVersion})');
+    print('sanitizer core: ${s.nativeLibraryPath} (ABI v${s.abiVersion})');
 
     // 1. the defaults
     print(s.sanitize('<div onclick="evil()">Hello <script>x</script></div>'));

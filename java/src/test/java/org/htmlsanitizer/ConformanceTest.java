@@ -9,7 +9,7 @@ import java.util.function.Consumer;
  * The 12-check binding conformance suite (docs/conformance.md).
  *
  * <p>Proves the Java binding marshals every value shape across the FFI. It is
- * NOT a sanitizer test suite — the behavioural cases live in the engine's own
+ * NOT a sanitizer test suite — the behavioural cases live in the sanitizer core's own
  * tests and run once, in Aether.
  *
  * <h2>Why a main-method runner instead of JUnit</h2>

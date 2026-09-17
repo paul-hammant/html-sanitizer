@@ -4,7 +4,7 @@
 // Import with: import core.htmlsanitizer   (from the repo root)
 //              import htmlsanitizer        (from within core/)
 //
-// This is the ONE engine behind every language binding in this monorepo:
+// This is the ONE sanitizer core behind every language binding in this monorepo:
 // core/embed.ae wraps it in a C ABI and `ae build --emit=lib` produces
 // core/native/libhtmlsanitizer.so, which all bindings load or link.
 

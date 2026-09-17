@@ -55,7 +55,7 @@ aeb(cap) {
 
 `run-tests.sh` does things the SDK path must still cover — confirm each first:
 
-1. **`HTMLSANITIZER_LIB`** — the engine `.so` the java binding dlopens. Ensure
+1. **`HTMLSANITIZER_LIB`** — the sanitizer core `.so` the java binding dlopens. Ensure
    it reaches the runner's environment (mirror how `java/.tests` does it, or a
    `jvm_flag`/env the runner reads).
 2. **The scala-library on the RUN classpath.** `run-tests.sh` deliberately runs

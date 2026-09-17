@@ -1,6 +1,6 @@
 # htmlsanitizer — WebAssembly (browser / DOM)
 
-The sanitizer engine compiled to **wasm32**, so untrusted HTML can be cleaned
+The sanitizer core compiled to **wasm32**, so untrusted HTML can be cleaned
 in the browser before it ever reaches `innerHTML`.
 
 ```js
@@ -16,7 +16,7 @@ backends are supported and tested; see [Two backends](#two-backends).
 
 ## Why not just use a JS sanitizer
 
-Because this is the **same engine** as the Python, Java, Go, Rust, … bindings —
+Because this is the **same sanitizer core** as the Python, Java, Go, Rust, … bindings —
 the same tokenizer, the same allow-lists, the same URL resolver, recompiled
 rather than reimplemented. What your backend strips and what the browser
 strips cannot drift apart, which is the failure mode a second implementation
@@ -65,7 +65,7 @@ Two non-obvious things, both load-bearing:
    `RUNTIME_FILES` list from Aether's own `make ci-wasm`, plus what the
    sanitizer needs (strbuilder / bytes / mem / set / stringseq / alloc).
 
-PCRE2 is stubbed out (`src/regex_stub.c`). The engine's only regex use is the
+PCRE2 is stubbed out (`src/regex_stub.c`). The sanitizer core's only regex use is the
 never-wired `disallow_css_property_value_regex` field, which is always null —
 so stubbing keeps the whole PCRE2 port out of the bundle at no behavioural
 cost. If that field is ever wired up, this stub has to go and PCRE2 must be
@@ -135,7 +135,7 @@ ae build --target=wasm32-wasi core_tests/probe.ae -o probe.wasm
 node --experimental-wasi-unstable-preview1 run.mjs probe.wasm
 ```
 
-Verified: the engine's 12-case behavioural suite and the 47-vector XSS suite
+Verified: the sanitizer core's 12-case behavioural suite and the 47-vector XSS suite
 both run green as wasm32-wasi under Node's WASI, with identical results to
 native. `build-zig.sh` still exists because `--emit=lib` is not yet supported
 for cross targets — a *library* of exports (what a browser binding needs) still
@@ -201,8 +201,8 @@ python3 -m http.server -d .        # then open /example/
 
 ## Memory
 
-The engine has a small per-`sanitize()` allocation it does not reclaim (see
-the root README's known issues) — engine-side, shared by every binding. In a
+The sanitizer core has a small per-`sanitize()` allocation it does not reclaim (see
+the root README's known issues) — core-side, shared by every binding. In a
 page-lifetime sanitizer this is irrelevant. In a long-running SPA that
 sanitizes continuously, `close()` the handle periodically, or create one per
 view and close it on teardown; the wasm heap grows otherwise.

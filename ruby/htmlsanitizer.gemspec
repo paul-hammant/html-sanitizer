@@ -6,11 +6,11 @@ Gem::Specification.new do |spec|
   spec.name = "htmlsanitizer"
   spec.version = HtmlSanitizer::VERSION
   spec.authors = ["HtmlSanitizer contributors"]
-  spec.summary = "Clean HTML of XSS vectors — thin binding over one shared native engine"
+  spec.summary = "Clean HTML of XSS vectors — thin binding over one shared native sanitizer core"
   spec.description = <<~DESC
-    A Fiddle binding over the shared HtmlSanitizer engine (pure Aether,
+    A Fiddle binding over the shared HtmlSanitizer core (pure Aether,
     compiled to libhtmlsanitizer.so). The gem carries no sanitizer logic of its
-    own — it only marshals values across the engine's C ABI, so every language
+    own — it only marshals values across the sanitizer core's C ABI, so every language
     binding in the monorepo behaves identically.
   DESC
   spec.homepage = "https://github.com/paul-hammant/html-sanitizer"

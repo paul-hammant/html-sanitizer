@@ -2,7 +2,7 @@
 //
 // Proves the .NET binding marshals every value shape across the P/Invoke
 // boundary. It is NOT a sanitizer test suite — the behavioural cases live in
-// the engine's own tests and run once, in Aether.
+// the sanitizer core's own tests and run once, in Aether.
 //
 // ## Why a console runner and not xunit/NUnit
 //
@@ -75,7 +75,7 @@ internal static class Conformance
     public static int Main()
     {
         Console.WriteLine("=== htmlsanitizer .NET binding conformance ===");
-        Console.WriteLine($"engine: {HtmlSanitizer.NativeLibraryPath ?? "(default probing)"} " +
+        Console.WriteLine($"sanitizer core: {HtmlSanitizer.NativeLibraryPath ?? "(default probing)"} " +
                           $"(ABI v{HtmlSanitizer.AbiVersion})");
 
         // ---- the twelve ----

@@ -2,7 +2,7 @@
 
 Clean HTML of constructs that can lead to Cross-Site Scripting (XSS).
 
-This is a **thin NIF binding** over the monorepo's one shared native engine —
+This is a **thin NIF binding** over the monorepo's one shared native sanitizer core —
 `core/native/libhtmlsanitizer.so`, compiled from pure Aether. It contains **no
 sanitizer logic**: every function marshals to an `aether_hs_embed_*` call
 across the C ABI described in `core/embed.ae`.
@@ -25,7 +25,7 @@ erlang/_build/htmlsanitizer_nif/
     ebin/htmlsanitizer_nif.beam
     ebin/htmlsanitizer_nif.app
     priv/htmlsanitizer_nif.so       the NIF
-    priv/libhtmlsanitizer.so        the engine, staged
+    priv/libhtmlsanitizer.so        the sanitizer core, staged
 ```
 
 Put its **parent** on `ERL_LIBS` and OTP finds the app:
@@ -43,8 +43,8 @@ rebar3 compile     # the NIF + the .beam files
 rebar3 ct          # the conformance suite
 ```
 
-The engine itself is not a rebar dependency; build it once first (see
-"Finding the engine" below, and ../core).
+The sanitizer core itself is not a rebar dependency; build it once first (see
+"Finding the sanitizer core" below, and ../core).
 
 **In this monorepo** — `aeb erlang/.build.ae`, which drives aeb's
 `erlang.nif` builder. That is what our CI runs, because this repo builds
@@ -54,10 +54,10 @@ asking the runtime for `code:root_dir()` rather than guessing
 
 Neither path wraps the other; both produce the same OTP application.
 
-### Finding the engine
+### Finding the sanitizer core
 
-The NIF `dlopen`s the engine rather than linking it, so the BEAM can load this
-module even when the engine is missing and report a clean error instead of
+The NIF `dlopen`s the sanitizer core rather than linking it, so the BEAM can load this
+module even when the sanitizer core is missing and report a clean error instead of
 dying inside the dynamic linker. Resolution order:
 
 1. `$HTMLSANITIZER_LIB`
@@ -102,7 +102,7 @@ true = htmlsanitizer:is_allowed(S, schemes, <<"http">>),
 htmlsanitizer:clear(S, schemes).                        %% start from nothing
 ```
 
-`items/2` returns the engine's own order (unspecified but stable between
+`items/2` returns the sanitizer core's own order (unspecified but stable between
 mutations); `sorted_items/2` when you want determinism.
 
 ### Flags
@@ -137,7 +137,7 @@ than BEAM scheduler fairness.
 > **Checks 10 and 11 are not implemented, by design.**
 >
 > Check 10 (`on_removing_tag` cancels a removal) and check 11
-> (`on_filter_url` rewrites a URL) require the engine to call a *host* function
+> (`on_filter_url` rewrites a URL) require the sanitizer core to call a *host* function
 > synchronously from inside `sanitize`. On the BEAM that would mean calling
 > back into the VM from a NIF and blocking the scheduler thread until a process
 > replied — `enif_send` is one-way, and there is no safe synchronous

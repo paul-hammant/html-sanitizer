@@ -10,7 +10,7 @@ import org.htmlsanitizer.Node
  * Idiomatic Groovy over the Java binding — a Closure-based DSL.
  *
  * There is <b>no second FFI here</b>. The one JVM binding to the shared Aether
- * engine is {@code java/src/main/java/org/htmlsanitizer} (FFM / Panama), and
+ * sanitizer core is {@code java/src/main/java/org/htmlsanitizer} (FFM / Panama), and
  * everything in this file is ordinary Groovy/Java interop on top of those
  * classes. A Groovy-specific FFI would be a second copy of the ABI's
  * marshalling and ownership rules to keep in step with {@code core/embed.ae},
@@ -28,7 +28,7 @@ import org.htmlsanitizer.Node
  * } .sanitize('<div onclick="evil()">hi</div>')
  * }</pre>
  *
- * Not thread-safe, for the same reason the Java class is not: the engine calls
+ * Not thread-safe, for the same reason the Java class is not: the sanitizer core calls
  * hooks re-entrantly during {@code sanitize}.
  */
 @CompileStatic
@@ -49,7 +49,7 @@ class HtmlSanitizers {
      * <p>The caller owns the result and must {@code close()} it; use
      * {@link #sanitizing} or {@code withCloseable} to have that done for you.
      *
-     * @param nativeLibPath an explicit engine path, or null for the usual
+     * @param nativeLibPath an explicit sanitizer core path, or null for the usual
      *        {@code $HTMLSANITIZER_LIB} / bundled / loader-path search
      */
     static HtmlSanitizer htmlSanitizer(String nativeLibPath = null,
@@ -116,8 +116,8 @@ class HtmlSanitizers {
  * The delegate of a {@link HtmlSanitizers#htmlSanitizer} configuration
  * closure — the DSL surface.
  *
- * <p>Every verb mutates the live engine through the Java binding; nothing is
- * buffered here, so ordering inside the block is the ordering the engine sees.
+ * <p>Every verb mutates the live sanitizer core through the Java binding; nothing is
+ * buffered here, so ordering inside the block is the ordering the sanitizer core sees.
  */
 @CompileStatic
 class SanitizerSpec {
@@ -300,7 +300,7 @@ class SanitizerSpec {
  *
  * <p>Kept as plain ints matching {@link Native}: the ABI's constants are
  * append-only, and an enum with an exhaustive switch would be a latent break
- * when the engine adds one.
+ * when the sanitizer core adds one.
  */
 @CompileStatic
 class Reasons {

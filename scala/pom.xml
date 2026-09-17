@@ -9,7 +9,7 @@
 
   Note the dependency: this module depends on org.htmlsanitizer:htmlsanitizer
   (java/), and NOT on any FFI of its own. That is the whole design — one JVM
-  binding to the engine, four idiomatic layers over it.
+  binding to the sanitizer core, four idiomatic layers over it.
 
   The source targets Scala 2.13 and Scala 3 from one file; this POM builds the
   Scala 3 artifact. Swap scalaVersion/artifact suffix for a 2.13 build.
@@ -27,7 +27,7 @@
   <name>htmlsanitizer-scala</name>
   <description>
     Cleans HTML of constructs that can lead to XSS — idiomatic Scala over the
-    Java (FFM/Panama) binding of the shared Aether HtmlSanitizer engine. No
+    Java (FFM/Panama) binding of the shared Aether HtmlSanitizer core. No
     sanitizer logic and no FFI of its own.
   </description>
 
@@ -45,7 +45,7 @@
       <artifactId>scala3-library_3</artifactId>
       <version>${scala.version}</version>
     </dependency>
-    <!-- The one and only route to the engine. -->
+    <!-- The one and only route to the sanitizer core. -->
     <dependency>
       <groupId>org.htmlsanitizer</groupId>
       <artifactId>htmlsanitizer</artifactId>

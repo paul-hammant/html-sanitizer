@@ -3,7 +3,7 @@
 Cleans HTML of constructs that can lead to XSS.
 
 This package is **marshalling only**. The sanitizer itself — HTML5 tokenizer,
-DOM, CSS parser, URL resolver, allow-lists — is the pure-Aether engine in
+DOM, CSS parser, URL resolver, allow-lists — is the pure-Aether sanitizer core in
 `core/htmlsanitizer.ae`, shared by every language binding in this monorepo and
 reached through the `aether_hs_embed_*` C ABI (`core/embed.ae`).
 
@@ -19,7 +19,7 @@ reached through the `aether_hs_embed_*` C ABI (`core/embed.ae`).
 java --enable-native-access=ALL-UNNAMED -cp out com.example.Main
 ```
 
-The engine is loaded at runtime. Resolution order:
+The sanitizer core is loaded at runtime. Resolution order:
 
 1. an explicit path — `new HtmlSanitizer("/path/to/libhtmlsanitizer.so")`
 2. `$HTMLSANITIZER_LIB`, then the `htmlsanitizer.lib` system property
@@ -44,7 +44,7 @@ try (HtmlSanitizer s = new HtmlSanitizer()) {
 ```
 
 `HtmlSanitizer` is `AutoCloseable`; `close()` releases the native handle and
-the upcall stubs. It is **not thread-safe** — the engine calls hooks
+the upcall stubs. It is **not thread-safe** — the sanitizer core calls hooks
 re-entrantly during `sanitize`.
 
 ## Allow-lists
@@ -64,7 +64,7 @@ s.allowedTags().clear().addAll("b", "i");    // start from nothing
 
 ## Callbacks
 
-All seven engine hooks are wired. Each `on*` returns `this`, so they chain;
+All seven sanitizer core hooks are wired. Each `on*` returns `this`, so they chain;
 passing `null` clears a hook.
 
 ```java
@@ -98,7 +98,7 @@ HTMLSANITIZER_LIB=../core/native/libhtmlsanitizer.so \
   java --enable-native-access=ALL-UNNAMED -cp out org.htmlsanitizer.ConformanceTest
 ```
 
-or, with the engine built for you:
+or, with the sanitizer core built for you:
 
 ```
 aeb java/.tests.ae
@@ -124,8 +124,8 @@ are plain methods, so wrapping them in `@Test` is mechanical.
 * Upcall targets **must not declare checked exceptions** — `Linker.upcallStub`
   rejects the handle outright. Wrap anything thrown.
 * Upcall stubs live in a shared `Arena` closed only by `close()`, and `close()`
-  frees the engine handle *first*, so no stub can fire after it disappears.
-* `on_filter_url` must hand the engine a **libc-malloc'd** string it then
+  frees the sanitizer core handle *first*, so no stub can fire after it disappears.
+* `on_filter_url` must hand the sanitizer core a **libc-malloc'd** string it then
   owns. `Native.mallocString` does that; an `Arena` allocation would be freed
   by the wrong allocator.
 * `Attribute.setValue` has the same constraint for a different reason: the ABI

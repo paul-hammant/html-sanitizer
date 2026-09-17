@@ -1,6 +1,6 @@
 // Idiomatic JS surface over the HtmlSanitizer WASM module.
 //
-// Carries no sanitizer logic — the same one-engine rule as every other
+// Carries no sanitizer logic — the same one-core rule as every other
 // binding. Everything here marshals to an `aether_hs_embed_*` call inside
 // the wasm instance.
 //
@@ -9,7 +9,7 @@
 //     const s = await HtmlSanitizer.create();
 //     el.innerHTML = s.sanitize(untrustedHtml);
 //
-// Why this and not DOMPurify: it is the SAME engine as the server-side
+// Why this and not DOMPurify: it is the SAME sanitizer core as the server-side
 // bindings, so what your Python/Java/Go backend strips is exactly what the
 // browser strips. No two-implementations-two-holes problem.
 
@@ -25,7 +25,7 @@ export const URI_ATTRIBUTES = 5;
 
 let modulePromise = null;
 
-/** Set-like view over one of the engine's six policy lists. */
+/** Set-like view over one of the sanitizer core's six policy lists. */
 class AllowList {
   #owner; #which;
   constructor(owner, which) { this.#owner = owner; this.#which = which; }
@@ -149,7 +149,7 @@ export class HtmlSanitizer {
 
   /**
    * Sanitize straight into an element. Convenience for the common DOM case —
-   * still goes through the same engine, so it is not a second code path.
+   * still goes through the same sanitizer core, so it is not a second code path.
    */
   setInnerHTML(el, html, baseUrl = '') {
     el.innerHTML = this.sanitize(html, baseUrl);
@@ -178,7 +178,7 @@ export class HtmlSanitizer {
 
   /**
    * Release the wasm-side handle. Not strictly required for a page-lifetime
-   * sanitizer, but the engine has a small per-sanitize allocation that is
+   * sanitizer, but the sanitizer core has a small per-sanitize allocation that is
    * only reclaimed when the handle goes, so long-running SPAs that create
    * sanitizers per view should close them.
    */

@@ -3,10 +3,10 @@
 Clean HTML of constructs that can lead to Cross-Site Scripting (XSS).
 
 This package is a **thin GHC-FFI binding** over the monorepo's one shared
-native engine — `core/native/libhtmlsanitizer.so`, compiled from pure Aether.
+native sanitizer core — `core/native/libhtmlsanitizer.so`, compiled from pure Aether.
 It contains **no sanitizer logic**: every function marshals to an
 `aether_hs_embed_*` call across the C ABI described in `core/embed.ae`. One
-engine, one set of behaviours, N language surfaces.
+sanitizer core, one set of behaviours, N language surfaces.
 
 > ### Honest status: this code has never been compiled
 >
@@ -36,7 +36,7 @@ haskell/
     src/HtmlSanitizer.hs         the public API
     src/HtmlSanitizer/Native.hs  the 1:1 C ABI symbol table
     test/Conformance.hs          the 12-check suite, a plain assertion runner
-    native/                      where .tests.ae stages the engine .so
+    native/                      where .tests.ae stages the sanitizer core .so
 ```
 
 `src/HtmlSanitizer/Native.hs` mirrors `rust/src/native.rs`, which is the
@@ -46,7 +46,7 @@ The two can be diffed by eye.
 ## Building
 
 Unlike the `dlopen`-based bindings (Python/ctypes, Ruby/Fiddle, PHP/FFI), this
-one **LINKS** the engine, so the shared library must exist at *build* time as
+one **LINKS** the sanitizer core, so the shared library must exist at *build* time as
 well as run time. Build it first:
 
 ```sh
@@ -114,7 +114,7 @@ sanitizeDocumentOnce :: ByteString -> IO ByteString
 
 ### Strings
 
-Everything is `ByteString`, holding UTF-8 bytes. The engine speaks UTF-8, so
+Everything is `ByteString`, holding UTF-8 bytes. The sanitizer core speaks UTF-8, so
 passing bytes straight through is lossless and keeps the dependency set to
 `base` + `bytestring`. Working in `Text`? Encode at the boundary with
 `Data.Text.Encoding.encodeUtf8`.
@@ -129,7 +129,7 @@ allowMany  s Tags    ["one", "two"]
 disallow   s Tags    "div"
 isAllowed  s Schemes "http"      -- IO True
 countList  s Schemes             -- IO 2
-items      s Schemes             -- engine order (unspecified but stable)
+items      s Schemes             -- sanitizer core order (unspecified but stable)
 sortedItems s Schemes            -- IO ["http","https"]
 clearList  s Schemes             -- start from nothing
 ```
@@ -195,7 +195,7 @@ setAttrValue :: Attribute -> ByteString -> IO ()   -- rewrite in place
 ```
 
 `setAttrValue` is safe with a transient buffer: `aether_hs_embed_attr_set_value`
-copies engine-side (`core/embed.ae` does `string.concat("", value)` precisely
+copies core-side (`core/embed.ae` does `string.concat("", value)` precisely
 so a host's buffer can die immediately after).
 
 ## The rules that matter
@@ -223,14 +223,14 @@ Borrowed strings — the `const char*` arguments a callback receives — go thro
 
 A `FunPtr` produced by `foreign import ccall "wrapper"` is a heap-allocated
 executable stub that pins the Haskell closure behind it. The garbage collector
-does not know the engine is holding a pointer to it, and it is **not** released
+does not know the sanitizer core is holding a pointer to it, and it is **not** released
 when the Haskell value goes out of scope. So a binding must:
 
-- **retain** every stub it registers, for as long as the engine could call it,
+- **retain** every stub it registers, for as long as the sanitizer core could call it,
   and
 - **free** each exactly once, with `freeHaskellFunPtr`.
 
-Drop the `FunPtr` and you leak the stub. Free it while the engine still holds
+Drop the `FunPtr` and you leak the stub. Free it while the sanitizer core still holds
 it and the next callback jumps through reclaimed memory.
 
 This package keeps a list of deferred `freeHaskellFunPtr` actions in an `IORef`
@@ -239,7 +239,7 @@ free the superseded stub immediately — that is deliberately conservative, and
 costs a few dozen bytes per re-registration.
 
 `close` frees in a specific order, which is also deliberate: **the native
-handle first** (which tears down the engine's hook boxes, so nothing can call
+handle first** (which tears down the sanitizer core's hook boxes, so nothing can call
 back), and only then the stubs.
 
 ### 3. `safe` vs `unsafe` foreign imports — and why it is not a micro-optimisation
@@ -248,7 +248,7 @@ Almost every import in `Native.hs` is `unsafe`: cheap, non-reentrant C calls
 where skipping the safe-call bookkeeping is most of the cost.
 
 **`aether_hs_embed_sanitize` and `aether_hs_embed_sanitize_document` are
-imported `safe`, and that is load-bearing.** The engine calls *back into
+imported `safe`, and that is load-bearing.** The sanitizer core calls *back into
 Haskell* from inside them, through the registered hooks. A callback re-entering
 the RTS from an `unsafe` foreign call is undefined behaviour: the calling
 capability was never released, so the returning Haskell code runs on a
@@ -265,12 +265,12 @@ can — they read a struct field and return.
 ### 4. `on_filter_url` and the allocator
 
 `onFilterUrl` is the hardest shape in the ABI: a callback that returns a string
-the engine takes ownership of. The engine's trampoline does
+the sanitizer core takes ownership of. The sanitizer core's trampoline does
 `string_new(out); free(out)` — it frees our buffer with the **C library's**
 `free`.
 
 So the buffer must come from the matching `malloc`. This binding imports the
-engine's own strdup for exactly that purpose:
+sanitizer core's own strdup for exactly that purpose:
 
 ```haskell
 foreign import ccall unsafe "hs_raw_dup" hs_raw_dup :: CString -> IO CString
@@ -279,7 +279,7 @@ foreign import ccall unsafe "hs_raw_dup" hs_raw_dup :: CString -> IO CString
 Note the name: `hs_raw_dup` is **not** prefixed `aether_`, because it is plain
 C in `core/_embed_support.c` rather than an Aether export. A GHC-allocated
 buffer freed by libc `free` is undefined behaviour, and where the RTS and the
-engine link different C runtimes it is a hard crash.
+sanitizer core link different C runtimes it is a hard crash.
 
 ### 5. Callback signatures: `user_data` first, and `CInt` not `CLong`
 
@@ -289,7 +289,7 @@ mismatch on LP64: garbage `reason` values and corrupted stack arguments.
 
 This binding registers `nullPtr` as `user_data` — a Haskell closure already
 carries everything it needs, so the slot has no job here — but still *declares*
-the parameter in every callback type, because the engine's trampolines pass it
+the parameter in every callback type, because the sanitizer core's trampolines pass it
 unconditionally and a wrapper of the wrong arity would shift every following
 argument.
 
@@ -347,5 +347,5 @@ Hackage round trip — for the same reason `php/tests/conformance.php` and the
 box. Swapping in hspec later is mechanical; each `check` is one `it`.
 
 ```sh
-aeb haskell/.tests.ae   # builds the engine, stages it, runs the suite (or SKIPs)
+aeb haskell/.tests.ae   # builds the sanitizer core, stages it, runs the suite (or SKIPs)
 ```

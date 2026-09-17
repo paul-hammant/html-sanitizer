@@ -1,9 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    The .NET binding over the shared HtmlSanitizer engine.
+    The .NET binding over the shared HtmlSanitizer core.
 
-    The engine is P/Invoked (dlopen'd at run time), not linked, so this project
+    The sanitizer core is P/Invoked (dlopen'd at run time), not linked, so this project
     has NO build-time dependency on the native library and NO NuGet
     dependencies at all — which is also what lets it build and test on a box
     with no network.
@@ -46,7 +46,7 @@
     <Version>0.1.0</Version>
     <Description>
       Clean HTML of constructs that can lead to XSS. A thin P/Invoke binding
-      over the shared HtmlSanitizer native engine — no sanitizer logic lives
+      over the shared HtmlSanitizer native sanitizer core — no sanitizer logic lives
       in C#.
     </Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>

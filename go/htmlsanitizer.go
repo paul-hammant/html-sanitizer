@@ -1,7 +1,7 @@
 // Package htmlsanitizer cleans HTML of constructs that can lead to
 // Cross-Site Scripting (XSS).
 //
-// It is a thin cgo binding over the monorepo's ONE shared native engine
+// It is a thin cgo binding over the monorepo's ONE shared native sanitizer core
 // (core/native/libhtmlsanitizer.so, compiled from pure Aether). No sanitizer
 // logic lives in this package — every method marshals to an
 // `aether_hs_embed_*` call across the C ABI described in core/embed.ae.
@@ -20,7 +20,7 @@ package htmlsanitizer
 #include <stdint.h>
 #include "bridge.h"
 
-// ---- the C ABI (core/embed.ae). Declared, not defined: we LINK the engine
+// ---- the C ABI (core/embed.ae). Declared, not defined: we LINK the sanitizer core
 // rather than dlopen it, so cgo resolves these at build time. ----
 
 void* aether_hs_embed_new(void);
@@ -68,7 +68,7 @@ import (
 	"unsafe"
 )
 
-// Which selects one of the engine's six policy lists. These are ABI constants
+// Which selects one of the sanitizer core's six policy lists. These are ABI constants
 // — append only, never renumber.
 type Which int
 
@@ -81,7 +81,7 @@ const (
 	URIAttributes Which = 5
 )
 
-// Reason is why the engine is about to remove something, as handed to the
+// Reason is why the sanitizer core is about to remove something, as handed to the
 // removing_* callbacks.
 type Reason int
 
@@ -110,7 +110,7 @@ const (
 var ErrClosed = errors.New("htmlsanitizer: sanitizer is closed")
 
 // lib is a placeholder for the "which library" dimension the dlopen-based
-// bindings carry. Here the engine is LINKED, so there is exactly one, and this
+// bindings carry. Here the sanitizer core is LINKED, so there is exactly one, and this
 // type exists only so Node/Attribute have the same shape across bindings.
 type lib struct{}
 
@@ -118,7 +118,7 @@ var theLib = &lib{}
 
 // takeString copies an ABI-returned string out and frees it through the ABI.
 //
-// Every char* the engine returns is caller-owned; leaking it is the single
+// Every char* the sanitizer core returns is caller-owned; leaking it is the single
 // easiest mistake to make in any of these bindings, so every string result in
 // this file goes through here.
 func takeString(s *C.char) string {
@@ -202,8 +202,8 @@ func (n Node) Attributes() []Attribute {
 
 // ---- AllowList ----
 
-// AllowList is a set-like view over one of the engine's six policy lists.
-// It holds no state of its own — every method reads or writes the engine.
+// AllowList is a set-like view over one of the sanitizer core's six policy lists.
+// It holds no state of its own — every method reads or writes the sanitizer core.
 type AllowList struct {
 	s     *Sanitizer
 	which Which
@@ -300,7 +300,7 @@ type FilterURLFunc func(elem Node, raw, resolved string) string
 type Sanitizer struct {
 	h      unsafe.Pointer
 	lib    *lib
-	handle cgo.Handle   // the token the engine hands back as user_data
+	handle cgo.Handle   // the token the sanitizer core hands back as user_data
 	udCell *C.uintptr_t // C-allocated cell holding that token
 
 	// Registered hooks. Held on the Go side (never passed to C) and kept
@@ -323,7 +323,7 @@ type Sanitizer struct {
 	URIAttributes        AllowList
 }
 
-// New creates a sanitizer with the engine's secure defaults populated.
+// New creates a sanitizer with the sanitizer core's secure defaults populated.
 // Call Close (typically via defer) to release the native handle.
 func New() (*Sanitizer, error) {
 	h := C.aether_hs_embed_new()
@@ -331,7 +331,7 @@ func New() (*Sanitizer, error) {
 		return nil, errors.New("htmlsanitizer: failed to create the native sanitizer")
 	}
 	s := &Sanitizer{h: h, lib: theLib}
-	// cgo.Handle gives the engine an integer token for this object. Passing
+	// cgo.Handle gives the sanitizer core an integer token for this object. Passing
 	// &s (a Go pointer) through C would violate the cgo pointer rules and can
 	// be caught by the runtime or invalidated by a moving GC. The token then
 	// lives in a malloc'd cell (see ud) so the ABI's void* is a real C pointer.
@@ -414,7 +414,7 @@ func (s *Sanitizer) SanitizeErr(html, baseURL string) (string, error) {
 	defer C.free(unsafe.Pointer(ch))
 	defer C.free(unsafe.Pointer(cb))
 	out := takeString(C.aether_hs_embed_sanitize(s.h, ch, cb))
-	// Keep s reachable across the C call: the engine may invoke callbacks
+	// Keep s reachable across the C call: the sanitizer core may invoke callbacks
 	// that resolve s.handle, and nothing else in this frame references s.
 	runtime.KeepAlive(s)
 	return out, nil
@@ -464,10 +464,10 @@ func (s *Sanitizer) SetAllowDataAttributes(on bool) *Sanitizer {
 	return s
 }
 
-// ABIVersion is the engine's ABI revision.
+// ABIVersion is the sanitizer core's ABI revision.
 func ABIVersion() int { return int(C.aether_hs_embed_abi_version()) }
 
-// ABIVersion is the engine's ABI revision.
+// ABIVersion is the sanitizer core's ABI revision.
 func (s *Sanitizer) ABIVersion() int { return ABIVersion() }
 
 func cInt(b bool) C.int {
@@ -556,7 +556,7 @@ func (s *Sanitizer) OnPostProcessDOM(fn PostProcessFunc) *Sanitizer {
 
 // OnFilterURL installs the URL-rewriting hook. fn returns the URL to use:
 // resolved unchanged for "no rewrite", or "" to drop the attribute. The
-// returned string is copied into a C buffer the engine takes ownership of.
+// returned string is copied into a C buffer the sanitizer core takes ownership of.
 func (s *Sanitizer) OnFilterURL(fn FilterURLFunc) *Sanitizer {
 	s.onFilterURL = fn
 	if fn == nil {
@@ -569,7 +569,7 @@ func (s *Sanitizer) OnFilterURL(fn FilterURLFunc) *Sanitizer {
 
 // ---- package-level conveniences ----
 
-// Sanitize cleans a fragment with the engine's secure defaults, creating and
+// Sanitize cleans a fragment with the sanitizer core's secure defaults, creating and
 // releasing a sanitizer around the call.
 func Sanitize(html, baseURL string) (string, error) {
 	s, err := New()
@@ -580,7 +580,7 @@ func Sanitize(html, baseURL string) (string, error) {
 	return s.SanitizeErr(html, baseURL)
 }
 
-// SanitizeDocument cleans a whole document with the engine's secure defaults.
+// SanitizeDocument cleans a whole document with the sanitizer core's secure defaults.
 func SanitizeDocument(html, baseURL string) (string, error) {
 	s, err := New()
 	if err != nil {

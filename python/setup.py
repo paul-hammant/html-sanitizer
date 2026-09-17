@@ -1,6 +1,6 @@
 """Packaging for the htmlsanitizer Python binding.
 
-The engine .so is bundled INSIDE the wheel (package_data below), staged there
+The sanitizer core .so is bundled INSIDE the wheel (package_data below), staged there
 by python/.package.ae. That is what makes a plain `pip install` work with no
 HTMLSANITIZER_LIB and no system-wide native install.
 """
@@ -9,7 +9,7 @@ from setuptools import setup, find_packages
 setup(
     name="htmlsanitizer",
     version="0.1.0",
-    description="Clean HTML of XSS vectors — thin binding over one shared native engine",
+    description="Clean HTML of XSS vectors — thin binding over one shared native sanitizer core",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
     packages=find_packages(include=["htmlsanitizer", "htmlsanitizer.*"]),

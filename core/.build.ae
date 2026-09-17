@@ -1,4 +1,4 @@
-// The shared HtmlSanitizer engine, built ONCE for the whole monorepo.
+// The shared HtmlSanitizer core, built ONCE for the whole monorepo.
 //
 // Output: target/core/lib/libhtmlsanitizer.so — every binding's .tests.ae deps
 // this node and then links (cgo/NIF/ccall) or loads (ctypes/Fiddle/koffi/

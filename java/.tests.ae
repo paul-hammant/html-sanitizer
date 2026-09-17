@@ -15,7 +15,7 @@
 // Fully idiomatic aeb: javac_test compiles, java_main runs. No os.system, and
 // no hand-reconstructed classpath — java_main owns where javac_test writes.
 //
-// The engine path IS passed by hand, and has to be.
+// The sanitizer core path IS passed by hand, and has to be.
 //
 // java_main does collect `ldlibdeps` and emit -Djava.library.path, but that
 // property is useless to this binding: Native.openLibrary() uses Panama's
@@ -26,7 +26,7 @@
 //
 // (An earlier revision of this file claimed the artifact contract alone was
 // enough. It is not, for a libraryLookup-based loader — verified by running
-// with ONLY -Djava.library.path set: every check fails to open the engine.)
+// with ONLY -Djava.library.path set: every check fails to open the sanitizer core.)
 import bldr
 import java
 import std.os

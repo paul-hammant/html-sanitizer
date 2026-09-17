@@ -1,6 +1,6 @@
 # Package manifest for the Nim binding.
 #
-# Note this package LINKS the native engine (see src/htmlsanitizer.nim's
+# Note this package LINKS the native sanitizer core (see src/htmlsanitizer.nim's
 # {.passL.}), so `libhtmlsanitizer.so` must be present at COMPILE time, not
 # just at run time. `nim/.tests.ae` stages it into nim/native/; an in-tree
 # checkout also has core/native/libhtmlsanitizer.so, and both directories are
@@ -12,7 +12,7 @@
 
 version       = "0.1.0"
 author        = "Paul Hammant"
-description   = "Clean HTML of constructs that can lead to XSS — a thin binding over the shared native engine"
+description   = "Clean HTML of constructs that can lead to XSS — a thin binding over the shared native sanitizer core"
 license       = "MIT"
 srcDir        = "src"
 

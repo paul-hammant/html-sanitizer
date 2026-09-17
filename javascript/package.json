@@ -1,7 +1,7 @@
 {
   "name": "htmlsanitizer",
   "version": "1.0.0",
-  "description": "Cleans HTML of constructs that can lead to XSS — a koffi binding over the shared Aether HtmlSanitizer engine.",
+  "description": "Cleans HTML of constructs that can lead to XSS — a koffi binding over the shared Aether HtmlSanitizer core.",
   "main": "index.js",
   "files": [
     "index.js",

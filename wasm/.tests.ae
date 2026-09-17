@@ -1,7 +1,7 @@
 // WebAssembly build + conformance.
 //
 // The odd one out among the bindings: it does NOT dep core/.build.ae, because
-// a browser cannot dlopen a native .so. Instead it recompiles the SAME engine
+// a browser cannot dlopen a native .so. Instead it recompiles the SAME sanitizer core
 // sources to wasm32, so the sanitizer in the DOM is the same logic as every
 // other binding rather than a JS rewrite.
 //
@@ -33,7 +33,7 @@ aeb(cap) {
                 println("wasm: emcc conformance tests failed")
                 return 1
             }
-            println("wasm: PASS (emcc) — engine compiled to wasm32, conformance green")
+            println("wasm: PASS (emcc) — sanitizer core compiled to wasm32, conformance green")
             ran = ran + 1
         }
     

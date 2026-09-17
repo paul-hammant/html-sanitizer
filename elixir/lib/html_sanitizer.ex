@@ -6,9 +6,9 @@ defmodule HtmlSanitizer do
   which lives in `erlang/` and is compiled exactly once. There is no C source
   in this directory and no second `.so` — every function here `defdelegate`s
   to `:htmlsanitizer_nif`, the very same compiled module the Erlang and Gleam
-  bindings load. One engine, one NIF, three languages.
+  bindings load. One sanitizer core, one NIF, three languages.
 
-  The engine itself (`core/native/libhtmlsanitizer.so`) is pure Aether. No
+  The sanitizer core itself (`core/native/libhtmlsanitizer.so`) is pure Aether. No
   sanitizer logic lives anywhere in this file: everything marshals to an
   `aether_hs_embed_*` call across the C ABI in `core/embed.ae`.
 
@@ -26,7 +26,7 @@ defmodule HtmlSanitizer do
 
   ## Callbacks
 
-  This binding exposes **none** of the engine's hooks, so conformance checks
+  This binding exposes **none** of the sanitizer core's hooks, so conformance checks
   10 and 11 are not implemented. A NIF cannot synchronously call back into the
   BEAM. See `README.md` for the full reasoning — the surface is absent rather
   than faked.
@@ -36,7 +36,7 @@ defmodule HtmlSanitizer do
   @opaque t :: reference()
 
   @typedoc """
-  One of the engine's six policy lists.
+  One of the sanitizer core's six policy lists.
 
   These map onto the ABI's integer selectors, which are append-only and must
   never be renumbered.
@@ -52,7 +52,7 @@ defmodule HtmlSanitizer do
   # ---- lifecycle ----
 
   @doc """
-  Create a sanitizer with the engine's secure defaults populated.
+  Create a sanitizer with the sanitizer core's secure defaults populated.
 
   The handle is an `enif_resource`: the BEAM's GC releases the native handle
   when the last reference goes, so a dropped sanitizer leaks nothing.
@@ -198,7 +198,7 @@ defmodule HtmlSanitizer do
   Empty a policy list.
 
   The "start from nothing" move for a caller who wants a strict allow-list
-  rather than the engine's permissive defaults.
+  rather than the sanitizer core's permissive defaults.
   """
   @spec clear(t(), list_name()) :: boolean()
   def clear(sanitizer, list), do: :htmlsanitizer_nif.clear(sanitizer, which(list))
@@ -222,7 +222,7 @@ defmodule HtmlSanitizer do
 
   # ---- introspection ----
 
-  @doc "The engine's ABI revision."
+  @doc "The sanitizer core's ABI revision."
   @spec abi_version() :: non_neg_integer()
   defdelegate abi_version(), to: :htmlsanitizer_nif
 end

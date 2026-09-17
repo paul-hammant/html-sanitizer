@@ -8,7 +8,7 @@
  *
  * NO SANITIZER LOGIC LIVES HERE. Every function marshals BEAM terms to an
  * `aether_hs_embed_*` call across the C ABI described in core/embed.ae. The
- * engine (core/htmlsanitizer.ae) is pure Aether.
+ * sanitizer core (core/htmlsanitizer.ae) is pure Aether.
  *
  * ## The two ownership rules
  *
@@ -20,7 +20,7 @@
  *
  * ## Why there are no callbacks (conformance checks 10 and 11)
  *
- * The engine's hooks are C function pointers invoked SYNCHRONOUSLY from
+ * The sanitizer core's hooks are C function pointers invoked SYNCHRONOUSLY from
  * inside aether_hs_embed_sanitize. To honour one in Erlang we would have to
  * call back into the BEAM from the middle of a NIF: send a message to a
  * process and block the NIF's scheduler thread waiting for the reply. That
@@ -101,13 +101,13 @@ static ERL_NIF_TERM atom_alloc_failed;
 /* ---- the sanitizer resource ---- */
 
 typedef struct {
-    void *handle;   /* the engine's opaque *HtmlSanitizer; NULL once closed */
+    void *handle;   /* the sanitizer core's opaque *HtmlSanitizer; NULL once closed */
 } hs_res;
 
 static ErlNifResourceType *HS_RES_TYPE = NULL;
 
 /* The GC's last-reference hook. A caller who never calls close/1 still frees
- * the native handle here, so a dropped sanitizer cannot leak the engine's
+ * the native handle here, so a dropped sanitizer cannot leak the sanitizer core's
  * allocation. */
 static void hs_res_dtor(ErlNifEnv *env, void *obj)
 {
@@ -123,7 +123,7 @@ static void hs_res_dtor(ErlNifEnv *env, void *obj)
 
 /* Copy a BEAM binary/iolist argument into a NUL-terminated C string.
  *
- * The engine's ABI is NUL-terminated char*, so a binary containing an interior
+ * The sanitizer core's ABI is NUL-terminated char*, so a binary containing an interior
  * NUL cannot be represented; we truncate at it rather than pass a buffer whose
  * C length disagrees with its BEAM length. Returns NULL on a bad term or OOM;
  * the caller frees with enif_free. */
@@ -147,7 +147,7 @@ static char *term_to_cstr(ErlNifEnv *env, ERL_NIF_TERM term)
 }
 
 /* Turn an ABI-returned, caller-owned char* into a BEAM binary and free it
- * through the ABI. EVERY string result from the engine goes through here —
+ * through the ABI. EVERY string result from the sanitizer core goes through here —
  * that is what makes the free impossible to forget. */
 static ERL_NIF_TERM take_binary(ErlNifEnv *env, char *s)
 {
@@ -425,7 +425,7 @@ static ERL_NIF_TERM nif_items(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[
 
     n = hs_count(r->handle, which);
     list = enif_make_list(env, 0);
-    /* Build back-to-front so the result comes out in the engine's own order. */
+    /* Build back-to-front so the result comes out in the sanitizer core's own order. */
     for (i = n - 1; i >= 0; i--) {
         ERL_NIF_TERM item = take_binary(env, hs_item_at(r->handle, which, i));
         list = enif_make_list_cell(env, item, list);
@@ -441,15 +441,15 @@ static ERL_NIF_TERM nif_abi_version(ErlNifEnv *env, int argc, const ERL_NIF_TERM
     return enif_make_int(env, hs_abi_version());
 }
 
-/* ---- engine discovery + symbol resolution ----
+/* ---- sanitizer core discovery + symbol resolution ----
  *
  * Order, matching every other binding in the monorepo:
  *   1. $HTMLSANITIZER_LIB
  *   2. priv/ next to this NIF (the bundled copy .build.ae stages)
  *   3. the OS loader's own search path
  *
- * We dlopen rather than link so the NIF .so has no DT_NEEDED on the engine:
- * the BEAM can load this module even when the engine is missing, and report a
+ * We dlopen rather than link so the NIF .so has no DT_NEEDED on the sanitizer core:
+ * the BEAM can load this module even when the sanitizer core is missing, and report a
  * clean {error, {load_failed, ...}} instead of dying in the dynamic linker.
  */
 

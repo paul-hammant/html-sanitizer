@@ -11,7 +11,7 @@ import org.htmlsanitizer.Node
  * Idiomatic Kotlin over the Java binding.
  *
  * There is **no second FFI here**. The one JVM binding to the shared Aether
- * engine is `java/src/main/java/org/htmlsanitizer` (FFM / Panama); everything
+ * sanitizer core is `java/src/main/java/org/htmlsanitizer` (FFM / Panama); everything
  * in this file is ordinary Kotlin/Java interop on top of those classes. That
  * is deliberate — a Kotlin-specific FFI would be a second copy of the
  * marshalling rules to keep in sync with `core/embed.ae`, and the first thing
@@ -39,7 +39,7 @@ import org.htmlsanitizer.Node
  * }
  * ```
  *
- * Not thread-safe, for the same reason the Java class is not: the engine calls
+ * Not thread-safe, for the same reason the Java class is not: the sanitizer core calls
  * hooks re-entrantly during `sanitize`.
  */
 
@@ -54,7 +54,7 @@ import org.htmlsanitizer.Node
  * handle, and letting that escape on an exception path is exactly the leak
  * this wrapper should prevent.
  *
- * @param nativeLibPath an explicit engine path, or null for the usual
+ * @param nativeLibPath an explicit sanitizer core path, or null for the usual
  *   `$HTMLSANITIZER_LIB` / bundled / loader-path search.
  */
 fun htmlSanitizer(
@@ -104,7 +104,7 @@ var HtmlSanitizer.allowDataAttributes: Boolean
 // ---- allow-lists as Kotlin collections ----
 //
 // Read-only aliases so `s.allowedTags += "x"` reads as a property rather than
-// a call. The underlying AllowList is a live view on the engine — these add no
+// a call. The underlying AllowList is a live view on the sanitizer core — these add no
 // caching, and must not.
 
 val HtmlSanitizer.allowedTags: org.htmlsanitizer.AllowList get() = allowedTags()
@@ -139,12 +139,12 @@ operator fun org.htmlsanitizer.AllowList.minusAssign(items: Iterable<String>) {
 }
 
 /**
- * `s.allowedSchemes.count` — the live count straight from the engine.
+ * `s.allowedSchemes.count` — the live count straight from the sanitizer core.
  *
  * Named `count`, not `size`: `size` would collide with the `size()` member
  * (unreachable, and self-recursive if it were not), and Kotlin's own
  * `Iterable.count()` would otherwise snapshot the whole list just to measure
- * it. This asks the engine.
+ * it. This asks the sanitizer core.
  */
 val org.htmlsanitizer.AllowList.count: Int get() = size()
 
@@ -231,9 +231,9 @@ fun Node.walk(): Sequence<Node> = sequence {
 // ---- ABI enums ----
 
 /**
- * Why the engine is about to remove something.
+ * Why the sanitizer core is about to remove something.
  *
- * [UNKNOWN] exists so a newer engine adding a reason cannot make this binding
+ * [UNKNOWN] exists so a newer sanitizer core adding a reason cannot make this binding
  * throw — the ABI constants are append-only, and an exhaustive `when` over a
  * closed set would be a latent break.
  */

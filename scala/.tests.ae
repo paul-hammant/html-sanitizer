@@ -1,7 +1,7 @@
 // Scala binding tests.
 //
 // The Scala layer is NOT a second FFI: it compiles against the Java binding's
-// classes (bldr.dep java/.build.ae -> the standard JVM classpath artifact) and reaches the engine
+// classes (bldr.dep java/.build.ae -> the standard JVM classpath artifact) and reaches the sanitizer core
 // through them. So this node deps BOTH java/.build.ae (for the classpath) and
 // core/.build.ae (for the .so that HTMLSANITIZER_LIB points at).
 //

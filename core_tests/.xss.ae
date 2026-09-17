@@ -1,6 +1,6 @@
 // XSS bypass-vector gate.
 //
-// core_tests/.tests.ae proves the engine behaves like the C# original;
+// core_tests/.tests.ae proves the sanitizer core behaves like the C# original;
 // this asks whether known evasion techniques get through. A failure here is
 // a live XSS hole, so it is a separate, loudly-named node rather than a few
 // more cases inside the behavioural suite.

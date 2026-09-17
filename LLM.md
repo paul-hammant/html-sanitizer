@@ -8,9 +8,9 @@ truth; this is the map so your *first* attempt lands clean.
 
 An XSS-scrubbing HTML sanitizer — a C# port (Michael Ganss's
 [HtmlSanitizer](https://github.com/mganss/HtmlSanitizer)) rewritten in pure
-Aether — shipped as a **one-engine-many-thin-bindings** monorepo, the same
+Aether — shipped as a **one-core-many-thin-bindings** monorepo, the same
 shape as the sibling [`servirtium-vcr`](https://github.com/servirtium/servirtium-vcr).
-The engine is `core/htmlsanitizer.ae` (~1540 lines: HTML5 tokenizer, DOM, CSS
+The sanitizer core is `core/htmlsanitizer.ae` (~1540 lines: HTML5 tokenizer, DOM, CSS
 inline-style parser, URL resolver, allow-lists, callbacks). `core/embed.ae`
 wraps it in a flat C ABI and `ae build --emit=lib` produces
 `core/native/libhtmlsanitizer.so`. Every language directory is a thin FFI shim
@@ -23,10 +23,10 @@ that deps `core/.build.ae`.
 allow-lists and callbacks, calls sanitize, and frees. Anything smarter than
 marshalling belongs in `core/`. If you find yourself parsing HTML, resolving a
 URL, or deciding whether a tag is allowed inside a binding — stop, that is the
-engine's job, and duplicating it is exactly the class of drift this layout
+sanitizer core's job, and duplicating it is exactly the class of drift this layout
 exists to prevent.
 
-## Why one engine (say this if asked to "just port it to X")
+## Why one sanitizer core (say this if asked to "just port it to X")
 
 A sanitizer is a security boundary. Per-language reimplementations mean
 per-language XSS holes, and a bypass has to be re-found and re-fixed in every
@@ -48,7 +48,7 @@ Facts that bit during the build-out, all still true:
   `hs_embed_free` export, so the handle-free symbol silently never got
   emitted and every host leaked a whole sanitizer per handle. If you add a C
   helper, keep it out of the `hs_embed_` namespace.
-- **Callback widths are C `int`, not `long`.** Codegen emits the engine's
+- **Callback widths are C `int`, not `long`.** Codegen emits the sanitizer core's
   closure calls as `int(*)(...)`. A `long` declaration on the host side is a
   4-vs-8-byte mismatch on LP64 → garbage `reason`, corrupted stack args. The
   doc comment in `embed.ae` used to say `long`; it lied, and it's fixed.
@@ -72,7 +72,7 @@ Facts that bit during the build-out, all still true:
 ## The WASM target (`wasm/`)
 
 The one binding that does NOT consume `libhtmlsanitizer.so` — a browser can't
-`dlopen` it. `wasm/build.sh` recompiles the same engine sources to wasm32 via
+`dlopen` it. `wasm/build.sh` recompiles the same sanitizer core sources to wasm32 via
 Emscripten, so the DOM gets the same logic, not a JS rewrite. ~62 KB.
 
 Two traps, both already paid for:
@@ -86,11 +86,11 @@ Two traps, both already paid for:
   `RUNTIME_FILES` list from Aether's own `make ci-wasm` instead, plus
   strbuilder/bytes/mem/set/stringseq/alloc.
 
-PCRE2 is stubbed (`wasm/src/regex_stub.c`) because the engine's only regex use
+PCRE2 is stubbed (`wasm/src/regex_stub.c`) because the sanitizer core's only regex use
 is `disallow_css_property_value_regex`, which **no C-ABI caller can set** —
 there is no way to hand a compiled `std.regex` across the FFI, so the field is
 always null in a `--emit=lib` build and the regex calls are dead code there.
-(NB: the field IS wired in the engine — an earlier note here wrongly said
+(NB: the field IS wired in the sanitizer core — an earlier note here wrongly said
 "never wired". `sanitize_css_style_attribute` consults it and drops matching
 declarations; proven with `^rgba\(0.*`. It is unreachable from the bindings,
 not unimplemented.) If a C-ABI setter is ever added, this stub must go and
@@ -136,7 +136,7 @@ sanitizer rarely wants.
 ## Build/test (aeb)
 
 - `aeb` is at `~/.local/bin/aeb`, **not on `PATH`** in a fresh shell.
-- `aeb core/.build.ae` builds the engine; every binding leaf deps it and gets
+- `aeb core/.build.ae` builds the sanitizer core; every binding leaf deps it and gets
   the path via `build.dep_artifact(... "shared_lib")`, handed to the binding
   as **`HTMLSANITIZER_LIB`**.
 - `aeb .presubmit.ae` runs everything.
@@ -154,7 +154,7 @@ sanitizer rarely wants.
 ## Two gates, and what each proves
 
 - `core_tests/.tests.ae` → `probe.ae`, the 12 behavioural cases ported from
-  the C# suite, in pure Aether. Proves the **engine**.
+  the C# suite, in pure Aether. Proves the **sanitizer core**.
 - `core_tests/.abi.ae` → `abi_smoke.c`, pure C over dlopen. Proves the **ABI**
   — all six callback shapes, the caller-owned-string contract, allow-list
   enumeration, handle independence. If this is green, a binding failure is a
@@ -162,11 +162,11 @@ sanitizer rarely wants.
 
 Per-binding suites mirror `docs/conformance.md` — twelve checks that sample
 each *kind* of value crossing the FFI. They are not sanitizer tests; the
-behavioural cases run once, in the engine.
+behavioural cases run once, in the sanitizer core.
 
 ## Known issues (don't "discover" these again)
 
-- **Per-`sanitize()` growth, ~0.2–0.3 kB/call.** Engine-side: `heap.free` on a
+- **Per-`sanitize()` growth, ~0.2–0.3 kB/call.** Core-side: `heap.free` on a
   `ptr` can't decrement refcounted `string` fields nested in heap-boxed
   structs (`DomNode.name/value`, `DomAttr.name/value`). Measured identical
   from pure C and from bindings, so never diagnose it as a binding bug. The
@@ -176,7 +176,7 @@ behavioural cases run once, in the engine.
   `*StringSeq` literals and never freed them (~10 kB per `new()`, even with
   zero sanitize calls). Now `string_seq_free`d. 20k handle cycles went from
   ~300 MB to ~3 MB RSS. Don't reintroduce a seq literal without a free.
-- **`on_removing_css_class` never fires.** The engine declares, populates and
+- **`on_removing_css_class` never fires.** The sanitizer core declares, populates and
   frees the slot but has no call site — a gap in the original port. The ABI
   deliberately omits it rather than expose a dead hook. Wiring it up in
   `sanitize_attributes` (where the `class` attribute is filtered) is the fix.
@@ -193,7 +193,7 @@ Pharo. Those leaves skip loudly.
 
 ## Repo geography
 
-`core/` engine + ABI + the ~200 lines of C that can't be Aether.
+`core/` sanitizer core + ABI + the ~200 lines of C that can't be Aether.
 `core_tests/` the two gates. `<lang>/` one binding each, with its own README.
 `docs/` `abi.md` (the contract) and `conformance.md` (the 12 checks).
 `.presubmit.ae` the aggregate target set.
@@ -203,4 +203,4 @@ Pharo. Those leaves skip loudly.
 `../aether` (the language; its `LLM.md` is the deep reference — read the
 "Idioms that keep biting" section before touching `.ae` code), `../aeb` (the
 build runner), `../servirtium-vcr` (the layout this repo copies; its `LLM.md`
-explains the one-engine-many-bindings rationale at length).
+explains the one-core-many-bindings rationale at length).

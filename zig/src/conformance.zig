@@ -1,7 +1,7 @@
 //! The 12-check binding conformance suite (docs/conformance.md).
 //!
 //! Proves the Zig binding marshals every value shape across the FFI. It is
-//! NOT a sanitizer test suite — the behavioural cases live in the engine's
+//! NOT a sanitizer test suite — the behavioural cases live in the sanitizer core's
 //! own tests (`core_tests/`) and run once, in Aether. Here we only ask: does
 //! each *kind of value* cross the boundary intact?
 //!
@@ -88,7 +88,7 @@ test "07 membership and count" {
 }
 
 test "08 enumeration" {
-    // The item_at / MapKeys read path. Engine order is unspecified but
+    // The item_at / MapKeys read path. Sanitizer core order is unspecified but
     // stable, so sort before comparing.
     const s = try hs.Sanitizer.init(alloc);
     defer s.deinit();
@@ -119,7 +119,7 @@ test "09 keep child nodes" {
 
 // ---- check 10: the callback trampoline + cancel semantics ----
 
-/// Context for check 10. The engine sees only a `*anyopaque` pointing here;
+/// Context for check 10. The sanitizer core sees only a `*anyopaque` pointing here;
 /// the trampoline hands it back to the hook, which is how a Zig callback gets
 /// state without a closure.
 const TagSeen = struct {
@@ -191,7 +191,7 @@ test "11 on_filter_url rewrites" {
             fn f(_: ?*anyopaque, _: hs.Node, _: []const u8, resolved: []const u8) []const u8 {
                 if (std.mem.eql(u8, resolved, "https://example.com/logo.png")) {
                     // A plain Zig slice. The binding copies it into an
-                    // engine-owned malloc'd buffer (via hs_raw_dup) — the
+                    // core-owned malloc'd buffer (via hs_raw_dup) — the
                     // hook neither allocates nor frees.
                     return "https://cdn.example.net/logo.png";
                 }
@@ -208,7 +208,7 @@ test "11 on_filter_url rewrites" {
 
 test "11b on_filter_url no-rewrite path" {
     // The other half of check 11: a hook that returns `resolved` untouched
-    // must leave the URL exactly as the engine resolved it. This is where a
+    // must leave the URL exactly as the sanitizer core resolved it. This is where a
     // binding that copies unconditionally, or that frees the borrowed
     // pointer, blows up.
     const s = try hs.Sanitizer.init(alloc);
@@ -387,7 +387,7 @@ test "extra node tree navigation from post_process_dom" {
 }
 
 test "extra attr_set_value rewrites in place" {
-    // Proves the ABI's "we COPY engine-side" guarantee: the value we hand in
+    // Proves the ABI's "we COPY core-side" guarantee: the value we hand in
     // lives in a stack buffer that is gone the instant the callback returns,
     // yet the rewritten attribute survives into the output.
     const s = try hs.Sanitizer.init(alloc);
@@ -415,7 +415,7 @@ test "extra attr_set_value rewrites in place" {
 }
 
 test "extra hooks can be cleared" {
-    // Registering, replacing, then clearing must leave the engine with no
+    // Registering, replacing, then clearing must leave the sanitizer core with no
     // dangling trampoline pointing at our struct — and the behaviour must
     // revert. This is the Zig analogue of abi_smoke.c's check 7.
     const s = try hs.Sanitizer.init(alloc);
@@ -437,8 +437,8 @@ test "extra hooks can be cleared" {
     try expectSanitize(s, "<div><keep-me>a</keep-me></div>", "", "<div></div>");
 }
 
-test "extra repeated setHooks does not churn the engine's hook slots" {
-    // Guards the workaround for the ENGINE-side leak documented on setHooks:
+test "extra repeated setHooks does not churn the sanitizer core's hook slots" {
+    // Guards the workaround for the core-side leak documented on setHooks:
     // `swap_hook` never frees the old HsClosure box on the replace path, so
     // every redundant re-registration leaks 16 bytes. We only touch the ABI
     // on a real null<->set transition, which makes reconfiguring between
@@ -508,7 +508,7 @@ test "extra abi version" {
 
 test "extra interior NUL is rejected, not truncated" {
     // Zig slices happily carry a NUL; C strings do not. Silently truncating
-    // would mean the engine sanitized less than the caller handed it — a
+    // would mean the sanitizer core sanitized less than the caller handed it — a
     // security bug, not a formatting one.
     const s = try hs.Sanitizer.init(alloc);
     defer s.deinit();

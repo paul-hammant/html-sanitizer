@@ -1,7 +1,7 @@
 <?php
 
 /**
- * The idiomatic PHP surface over the HtmlSanitizer engine.
+ * The idiomatic PHP surface over the HtmlSanitizer core.
  *
  * Carries no sanitizer logic — every method here marshals to an
  * `aether_hs_embed_*` call in {@see Native}.
@@ -36,7 +36,7 @@ final class HtmlSanitizer
     private $handle;
 
     /**
-     * Registered FFI closures must be kept alive for as long as the engine can
+     * Registered FFI closures must be kept alive for as long as the sanitizer core can
      * call them. A closure that went out of scope would be freed and the
      * process would segfault on the next callback. This array is the PHP
      * equivalent of ctypes' keepalive list, and is cleared only in close(),
@@ -54,12 +54,12 @@ final class HtmlSanitizer
     public readonly AllowList $uriAttributes;
 
     /**
-     * Create a sanitizer with the engine's secure defaults populated.
+     * Create a sanitizer with the sanitizer core's secure defaults populated.
      *
-     * @param string|null $nativeLib An explicit engine path; otherwise
+     * @param string|null $nativeLib An explicit sanitizer core path; otherwise
      *                               $HTMLSANITIZER_LIB, then native/, then
      *                               ../core/native/, then the OS loader.
-     * @throws RuntimeException when the engine cannot be loaded or created.
+     * @throws RuntimeException when the sanitizer core cannot be loaded or created.
      */
     public function __construct(?string $nativeLib = null)
     {
@@ -107,7 +107,7 @@ final class HtmlSanitizer
         $h = $this->handle;
         $this->handle = null;
         $this->ffi->aether_hs_embed_free($h);
-        // Only now is it certain the engine can no longer invoke a hook.
+        // Only now is it certain the sanitizer core can no longer invoke a hook.
         $this->keepAlive = [];
     }
 
@@ -199,13 +199,13 @@ final class HtmlSanitizer
         return $this->ffi->aether_hs_embed_get_allow_data_attributes($this->handle()) !== 0;
     }
 
-    /** The engine's ABI revision. */
+    /** The sanitizer core's ABI revision. */
     public function abiVersion(): int
     {
         return $this->ffi->aether_hs_embed_abi_version();
     }
 
-    /** Where the engine .so was actually loaded from. */
+    /** Where the sanitizer core .so was actually loaded from. */
     public function nativeLibraryPath(): ?string
     {
         return Native::path();
@@ -227,11 +227,11 @@ final class HtmlSanitizer
      * null clears the hook.
      *
      * The Closure is stored in $keepAlive BEFORE it is registered: PHP frees
-     * the generated thunk when the Closure becomes unreachable, and the engine
+     * the generated thunk when the Closure becomes unreachable, and the sanitizer core
      * would then call into freed memory.
      *
      * user_data is unused on the PHP side — the Closure already captures the
-     * handler, so there is nothing to look up. The engine's trampoline still
+     * handler, so there is nothing to look up. The sanitizer core's trampoline still
      * round-trips it.
      */
     private function register(string $setter, ?\Closure $trampoline): self
@@ -324,7 +324,7 @@ final class HtmlSanitizer
      * `fn(Node $elem, string $raw, string $resolved): string`
      *
      * Return the URL to use — $resolved unchanged for no rewrite, "" to drop
-     * the attribute. The string is strdup'd into a buffer the ENGINE takes
+     * the attribute. The string is strdup'd into a buffer the sanitizer core takes
      * ownership of; you do not free it.
      */
     public function onFilterUrl(?callable $handler): self
@@ -338,9 +338,9 @@ final class HtmlSanitizer
                     Native::borrowString($raw),
                     Native::borrowString($resolved)
                 );
-                // The engine frees this, so it must come from malloc — not
+                // The sanitizer core frees this, so it must come from malloc — not
                 // FFI::new, whose memory PHP owns and would free a second
-                // time. hs_raw_dup is the engine's own malloc'd strdup, and
+                // time. hs_raw_dup is the sanitizer core's own malloc'd strdup, and
                 // therefore the exact counterpart of the free() that will
                 // release it.
                 return $ffi->hs_raw_dup($out);
@@ -350,13 +350,13 @@ final class HtmlSanitizer
 
     // ---- one-shots ----
 
-    /** Sanitize $html with the engine's defaults. */
+    /** Sanitize $html with the sanitizer core's defaults. */
     public static function sanitizeOnce(string $html, string $baseUrl = ''): string
     {
         return self::withSanitizer(static fn (HtmlSanitizer $s): string => $s->sanitize($html, $baseUrl));
     }
 
-    /** Sanitize a full document with the engine's defaults. */
+    /** Sanitize a full document with the sanitizer core's defaults. */
     public static function sanitizeDocumentOnce(string $html, string $baseUrl = ''): string
     {
         return self::withSanitizer(static fn (HtmlSanitizer $s): string => $s->sanitizeDocument($html, $baseUrl));

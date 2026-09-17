@@ -10,8 +10,8 @@
 //     extension. `host_source(...)` builds the small bundled 5.4 host and uses
 //     it; the SDK skips that step when a real `lua5.4` binary is on PATH.
 //
-// The extension `dlopen`s the engine at run time (it is not on the link line),
-// so the engine path is threaded in via HTMLSANITIZER_LIB — the SDK
+// The extension `dlopen`s the sanitizer core at run time (it is not on the link line),
+// so the sanitizer core path is threaded in via HTMLSANITIZER_LIB — the SDK
 // deliberately does not set app-specific env itself.
 
 import bldr

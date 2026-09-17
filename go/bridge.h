@@ -1,8 +1,8 @@
 /* bridge.h — C-side declarations for the Go callback trampolines.
  *
  * cgo forbids passing a Go pointer to C, and it cannot take the address of a
- * Go func to hand the engine a raw function pointer. The standard pattern is
- * therefore: register these plain C functions with the engine, have each one
+ * Go func to hand the sanitizer core a raw function pointer. The standard pattern is
+ * therefore: register these plain C functions with the sanitizer core, have each one
  * call back into an //export-ed Go function, and smuggle the identity of the
  * owning Go object through the ABI's opaque `user_data` as a runtime/cgo
  * Handle (a uintptr, never a pointer into the Go heap).

@@ -2,7 +2,7 @@
 The 12-check binding conformance suite (docs/conformance.md), in Pharo.
 
 I prove the Pharo binding marshals every value shape across the FFI. I am NOT
-a sanitizer test suite — the behavioural cases live in the engine's own tests
+a sanitizer test suite — the behavioural cases live in the sanitizer core's own tests
 and run once, in Aether.
 
 Unlike the Kotlin/Scala/Clojure/Groovy layers, which sit on the Java binding,
@@ -363,7 +363,7 @@ HtmlSanitizerConformanceTest >> testFilterUrlNilMeansNoRewrite [
 
 { #category : 'tests - callbacks' }
 HtmlSanitizerConformanceTest >> testCallbackCanBeCleared [
-	"Passing nil unregisters the hook; the engine must then fall back to its
+	"Passing nil unregisters the hook; the sanitizer core must then fall back to its
 	 default behaviour rather than call a stale pointer."
 
 	sanitizer whenRemovingTag: [ :node :reason | true ].

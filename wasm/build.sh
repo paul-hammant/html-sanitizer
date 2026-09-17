@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Build the HtmlSanitizer engine to WebAssembly.
+# Build the HtmlSanitizer core to WebAssembly.
 #
 # Unlike every other binding here, this one does NOT load
 # core/native/libhtmlsanitizer.so — a browser cannot dlopen a native .so.
-# Instead it compiles the SAME engine sources to wasm32 via Emscripten, so
+# Instead it compiles the SAME sanitizer core sources to wasm32 via Emscripten, so
 # the sanitizer running in the DOM is byte-for-byte the same logic as the
 # native bindings, not a JS reimplementation. That is the whole point: a
 # second implementation would mean a second set of XSS holes.
@@ -19,7 +19,7 @@
 #      in Aether's own `make ci-wasm`, plus what the sanitizer needs
 #      (strbuilder / bytes / mem / set / stringseq / alloc).
 #
-# PCRE2 is stubbed (src/regex_stub.c): the engine's only regex use is the
+# PCRE2 is stubbed (src/regex_stub.c): the sanitizer core's only regex use is the
 # never-wired disallow_css_property_value_regex field, always null. Stubbing
 # keeps the whole PCRE2 port out of the bundle for no behavioural change.
 #

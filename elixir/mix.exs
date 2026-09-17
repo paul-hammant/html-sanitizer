@@ -10,7 +10,7 @@ defmodule HtmlSanitizer.MixProject do
 
   That is deliberate. `elixir_make` is the usual way an Elixir package ships a
   NIF, but using it here would mean a SECOND copy of the C and a second `.so`,
-  which is exactly what this monorepo's one-engine rule forbids.
+  which is exactly what this monorepo's one-core rule forbids.
   """
 
   def project do
@@ -20,7 +20,7 @@ defmodule HtmlSanitizer.MixProject do
       elixir: "~> 1.12",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
-      description: "Clean HTML of XSS constructs — Elixir surface over the shared Aether engine",
+      description: "Clean HTML of XSS constructs — Elixir surface over the shared Aether sanitizer core",
       # No network access is needed to build or test this project; every
       # dependency list below is empty on purpose so `mix test` runs offline.
       docs: [main: "HtmlSanitizer"]

@@ -21,7 +21,7 @@
   <name>htmlsanitizer</name>
   <description>
     Cleans HTML of constructs that can lead to XSS — a Java FFM (Panama)
-    binding over the shared Aether HtmlSanitizer engine. Marshalling only; the
+    binding over the shared Aether HtmlSanitizer core. Marshalling only; the
     sanitizer itself is core/htmlsanitizer.ae.
   </description>
 
@@ -80,7 +80,7 @@
   </build>
 
   <profiles>
-    <!-- Default the engine path to the in-tree build when not overridden. -->
+    <!-- Default the sanitizer core path to the in-tree build when not overridden. -->
     <profile>
       <id>default-lib</id>
       <activation>

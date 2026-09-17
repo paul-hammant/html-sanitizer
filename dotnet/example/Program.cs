@@ -1,4 +1,4 @@
-// A short tour of the .NET binding. Run it with the engine built:
+// A short tour of the .NET binding. Run it with the sanitizer core built:
 //
 //   cd core && ae build --emit=lib embed.ae --extra _embed_support.c \
 //       -o native/libhtmlsanitizer.so
@@ -11,7 +11,7 @@ using HtmlSanitization;
 
 using var s = new HtmlSanitizer();
 
-Console.WriteLine($"engine: {HtmlSanitizer.NativeLibraryPath} (ABI v{HtmlSanitizer.AbiVersion})");
+Console.WriteLine($"sanitizer core: {HtmlSanitizer.NativeLibraryPath} (ABI v{HtmlSanitizer.AbiVersion})");
 
 // 1. the defaults
 Console.WriteLine(s.Sanitize("<div onclick=\"evil()\">Hello <script>x</script></div>"));

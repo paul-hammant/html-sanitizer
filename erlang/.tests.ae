@@ -54,7 +54,7 @@ aeb(cap) {
             return 1
         }
     
-        // HTMLSANITIZER_LIB points the NIF's loader at the engine artifact
+        // HTMLSANITIZER_LIB points the NIF's loader at the sanitizer core artifact
         // wherever aeb put it; priv/ holds a staged copy as the fallback.
         rc = os.system("cd \"${root}/erlang\" && HTMLSANITIZER_LIB=\"${lib}\" ERL_LIBS=\"${root}/erlang/_build\" erl -noshell -pa \"${tdir}\" -eval 'case eunit:test(htmlsanitizer_conformance_SUITE, [verbose]) of ok -> halt(0); _ -> halt(1) end.'")
         if rc != 0 {

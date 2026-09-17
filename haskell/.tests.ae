@@ -1,6 +1,6 @@
 // Haskell binding tests (GHC FFI). Like go/ and unlike the dlopen-based
-// bindings, this one LINKS the engine, so the .so must exist at BUILD time as
-// well as run time. We dep the shared engine node and stage its artifact into
+// bindings, this one LINKS the sanitizer core, so the .so must exist at BUILD time as
+// well as run time. We dep the shared sanitizer core node and stage its artifact into
 // haskell/native/ so both the link and the baked-in rpath resolve no matter
 // where aeb put the artifact.
 //
@@ -46,13 +46,13 @@ aeb(cap) {
             }
         }
     
-        // Stage the engine where the .cabal's extra-lib-dirs and the rpath both
+        // Stage the sanitizer core where the .cabal's extra-lib-dirs and the rpath both
         // point. The compile below links against it by name.
         dest = "${root}/haskell/native"
         _m = os.system("mkdir -p \"${dest}\"")
         cp = os.system("cp -f \"${lib}\" \"${dest}/libhtmlsanitizer.so\"")
         if cp != 0 {
-            println("haskell: could not stage the engine into haskell/native")
+            println("haskell: could not stage the sanitizer core into haskell/native")
             return 1
         }
     
@@ -67,7 +67,7 @@ aeb(cap) {
         //   -optl-Wl,-rpath,…  so the loader finds it at run time too
         //
         // LD_LIBRARY_PATH is belt-and-braces next to the rpath: runghc runs the
-        // program through the bytecode interpreter, which resolves the engine
+        // program through the bytecode interpreter, which resolves the sanitizer core
         // through the ordinary loader search path rather than a linked-in rpath.
         if runner == 0 {
             rc = os.system("cd \"${root}/haskell\" && LD_LIBRARY_PATH=\"${dest}:$LD_LIBRARY_PATH\" runghc -isrc -itest -Lnative -L../core/native -lhtmlsanitizer -optl-Wl,-rpath,${dest} test/Conformance.hs")

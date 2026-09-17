@@ -1,6 +1,6 @@
 // The 12-check binding conformance suite (docs/conformance.md), plus the
 // WASM-specific concerns: module instantiation, memory growth, and that the
-// engine's security fixes rode along into the wasm32 build.
+// sanitizer core's security fixes rode along into the wasm32 build.
 //
 // Checks 10 and 11 (the callback hooks) are NOT covered — see the README.
 // Emscripten can do callbacks via addFunction, but that needs -sALLOW_TABLE_GROWTH
@@ -88,7 +88,7 @@ test('protocol-relative URL resolved', () => {
                '<a href="https://evil.example/p">x</a>');
 });
 
-// ---- the engine's security fixes must be present in the wasm build too ----
+// ---- the sanitizer core's security fixes must be present in the wasm build too ----
 
 test('SECURITY javascript: blocked', () => {
   assert.equal(s.sanitize('<a href="javascript:alert(1)">x</a>'), '<a>x</a>');

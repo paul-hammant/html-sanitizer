@@ -3,7 +3,7 @@
  * The 12-check binding conformance suite (docs/conformance.md).
  *
  * Proves the JavaScript binding marshals every value shape across the FFI. It
- * is NOT a sanitizer test suite — the behavioural cases live in the engine's
+ * is NOT a sanitizer test suite — the behavioural cases live in the sanitizer core's
  * own tests and run once, in Aether.
  *
  * Uses node:test + node:assert so no test framework has to be installed.

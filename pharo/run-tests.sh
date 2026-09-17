@@ -3,7 +3,7 @@
 # headless.
 #
 # Inputs (set by pharo/.tests.ae; both have sensible defaults for a manual run):
-#   HTMLSANITIZER_LIB  the engine .so  (core/.build.ae artifact)
+#   HTMLSANITIZER_LIB  the sanitizer core .so  (core/.build.ae artifact)
 #   PHARO_DIR          where the Pharo VM + image live (default ~/.local/pharo)
 #
 # Exit codes: 0 pass, 1 fail, 77 = no Pharo VM (SKIP).
@@ -11,7 +11,7 @@
 # ---------------------------------------------------------------------------
 # Unlike the Kotlin/Scala/Clojure/Groovy layers, which are thin wrappers over
 # the Java binding, the Pharo binding is a REAL FFI (UnifiedFFI) — Pharo is not
-# a JVM. So there is no Java classpath here at all, only the engine .so.
+# a JVM. So there is no Java classpath here at all, only the sanitizer core .so.
 set -eu
 
 here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)

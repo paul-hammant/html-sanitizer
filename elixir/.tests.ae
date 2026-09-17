@@ -48,7 +48,7 @@ aeb(cap) {
         }
     
         // MIX_ENV=test keeps the build out of the dev profile. HTMLSANITIZER_LIB
-        // points the NIF's loader at the engine artifact wherever aeb put it;
+        // points the NIF's loader at the sanitizer core artifact wherever aeb put it;
         // priv/ holds a staged copy as the fallback.
         rc = os.system("cd \"${root}/elixir\" && HTMLSANITIZER_BEAM_APP=\"${app}\" HTMLSANITIZER_LIB=\"${lib}\" MIX_ENV=test mix test --no-deps-check")
         if rc != 0 {

@@ -2,9 +2,9 @@
 --
 --   luarocks make htmlsanitizer-0.1.0-1.rockspec
 --
--- The C extension `dlopen`s the shared engine at runtime rather than linking
+-- The C extension `dlopen`s the shared sanitizer core at runtime rather than linking
 -- it, so this rock has no external build dependency beyond Lua's own headers.
--- The engine must be findable at run time: set $HTMLSANITIZER_LIB, or install
+-- The sanitizer core must be findable at run time: set $HTMLSANITIZER_LIB, or install
 -- libhtmlsanitizer.so somewhere the OS loader looks.
 
 package = "htmlsanitizer"
@@ -19,7 +19,7 @@ description = {
   summary = "Clean HTML of constructs that can lead to XSS.",
   detailed = [[
     A thin Lua 5.4 C-extension binding over the shared HtmlSanitizer native
-    engine (compiled from pure Aether). No sanitizer logic lives in Lua or in
+    sanitizer core (compiled from pure Aether). No sanitizer logic lives in Lua or in
     the extension — every call marshals to an aether_hs_embed_* symbol.
   ]],
   homepage = "https://github.com/paul-hammant/html-sanitizer",

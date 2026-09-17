@@ -21,7 +21,7 @@ def main():
     mode = sys.argv[1] if len(sys.argv) > 1 else "discovery"
 
     if mode == "explicit":
-        # The first-class argument: a consumer that keeps the engine somewhere
+        # The first-class argument: a consumer that keeps the sanitizer core somewhere
         # of its own choosing points at it directly.
         import htmlsanitizer as pkg
         bundled = os.path.join(os.path.dirname(pkg.__file__),

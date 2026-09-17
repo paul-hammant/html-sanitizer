@@ -3,10 +3,10 @@
 Clean HTML of constructs that can lead to Cross-Site Scripting (XSS).
 
 This package is a **thin Zig binding** over the monorepo's one shared native
-engine — `core/native/libhtmlsanitizer.so`, compiled from pure Aether. It
+sanitizer core — `core/native/libhtmlsanitizer.so`, compiled from pure Aether. It
 contains **no sanitizer logic**: every method marshals to an
 `aether_hs_embed_*` call across the C ABI described in `core/embed.ae`. One
-engine, one set of behaviours, N language surfaces.
+sanitizer core, one set of behaviours, N language surfaces.
 
 Requires **Zig 0.16.0** or newer.
 
@@ -21,7 +21,7 @@ Requires **Zig 0.16.0** or newer.
 ## Building
 
 Like Go's cgo binding (and unlike the dlopen-based Python/ctypes and
-Ruby/Fiddle ones), this binding **links** the engine, so the shared library
+Ruby/Fiddle ones), this binding **links** the sanitizer core, so the shared library
 must exist at *build* time as well as run time. Build it first:
 
 ```sh
@@ -36,7 +36,7 @@ zig build test        # the conformance suite
 zig build example     # build and run the demo
 ```
 
-`build.zig` looks for the engine in this order, first hit wins:
+`build.zig` looks for the sanitizer core in this order, first hit wins:
 
 1. `-Dengine=<path>` — what `.tests.ae` passes, using the artifact path `aeb`
    published for `core/.build.ae`
@@ -59,7 +59,7 @@ link error.
 const hs = b.dependency("htmlsanitizer", .{});
 exe.root_module.addImport("htmlsanitizer", hs.module("htmlsanitizer"));
 
-// A Zig module carries source, not link flags — so YOU must link the engine:
+// A Zig module carries source, not link flags — so YOU must link the sanitizer core:
 exe.linkLibC();
 exe.addLibraryPath(.{ .cwd_relative = "/path/to/core/native" });
 exe.addRPath(.{ .cwd_relative = "/path/to/core/native" });
@@ -88,7 +88,7 @@ const clean = try s.sanitize("<img src=\"logo.png\">", "https://example.com");
 // <img src="https://example.com/logo.png">
 ```
 
-`sanitizeDocument` is the full-document entry point (currently the same engine
+`sanitizeDocument` is the full-document entry point (currently the same sanitizer core
 path, kept distinct so the two-method surface does not drift).
 
 A package-level one-shot creates and releases a handle around the call:
@@ -116,7 +116,7 @@ const list = try s.items(.schemes);         // caller owns the slice AND each st
 defer s.freeItems(list);
 ```
 
-`items` enumerates in the engine's own order — unspecified but stable between
+`items` enumerates in the sanitizer core's own order — unspecified but stable between
 mutations. Sort it yourself if you need determinism.
 
 ### Flags
@@ -129,7 +129,7 @@ s.setAllowDataAttributes(true);  // let data-* through without listing each
 ### Callbacks
 
 All seven hooks are supported. `setHooks` takes the whole set at once; a field
-left null is *cleared* engine-side, so Zig state and engine state stay in exact
+left null is *cleared* core-side, so Zig state and sanitizer core state stay in exact
 correspondence. `resetHooks()` removes everything.
 
 For the `removing_*` family, **returning `true` CANCELS the removal** — it
@@ -167,7 +167,7 @@ Zig has no closures, so state travels through the explicit `ctx: ?*anyopaque`
 trampoline table: a `callconv(.C)` function *is* a C function pointer.
 
 `filter_url` returns a plain Zig slice. The binding copies it into an
-engine-owned buffer for you — you neither allocate nor free the return value.
+core-owned buffer for you — you neither allocate nor free the return value.
 Returning the `resolved` slice unchanged takes a pointer-identity fast path
 with no copy at all.
 
@@ -193,7 +193,7 @@ try attr.setValue(allocator, "https://example.com/safe")
 ```
 
 `setValue` is safe with a transient buffer: `hs_embed_attr_set_value` copies
-engine-side, so nothing aliases your stack after the call. That is a documented
+core-side, so nothing aliases your stack after the call. That is a documented
 ABI guarantee, and the suite tests it with a stack array that dies immediately.
 
 ## Memory and ownership
@@ -210,27 +210,27 @@ Every Zig-side result is therefore yours to free with the allocator you passed
 in. The conformance suite runs entirely on `std.testing.allocator`, which fails
 the test on a leak, so rule 1 is checked by the tests rather than trusted.
 
-**2. Callback integers are C `int`, not `long`.** The engine's codegen emits
+**2. Callback integers are C `int`, not `long`.** The sanitizer core's codegen emits
 its closure calls as `int (*)(...)`; a host declaring `c_long` gets a
 4-vs-8-byte mismatch on LP64 — garbage `reason` values and corrupted stack
 arguments after it. Zig will not warn you, because the ABI is whatever you
 declare. The suite asserts on the *value* of `reason` in checks 10 and the
 attribute/style extras, so this cannot regress silently.
 
-**3. A registered callback must outlive the engine's ability to call it.**
+**3. A registered callback must outlive the sanitizer core's ability to call it.**
 `callconv(.C)` functions are static code, so the function half is free. The
 `user_data` half is not: it is the address of the `Sanitizer`. That is why
 `Sanitizer.init` returns a heap-allocated `*Sanitizer` rather than a value — a
-by-value return would let you copy it to a new address, leaving the engine
+by-value return would let you copy it to a new address, leaving the sanitizer core
 calling into a dead stack frame. `deinit` clears every hook *before* freeing
-the handle, so the engine never holds a pointer to freed memory even briefly.
+the handle, so the sanitizer core never holds a pointer to freed memory even briefly.
 
-### An engine-side leak this binding works around
+### An core-side leak this binding works around
 
 While verifying the binding under valgrind, one leak turned out **not** to be
 the binding's. `swap_hook` in `core/embed.ae` calls `hs_embed_cb_free_env(old)`,
 which frees the outgoing box's `env` but deliberately not the box itself — the
-comment in `core/_embed_support.c` says "the engine's `heap.free()` on the hook
+comment in `core/_embed_support.c` says "the sanitizer core's `heap.free()` on the hook
 slot does that". On the *replace* path nothing ever does. So every
 re-registration or manual clearing of an already-registered hook leaks one
 16-byte `HsClosure`.
@@ -253,7 +253,7 @@ clear hooks, with a comment saying why so nobody "fixes" it back.
 The binding also declines to provoke the replace path. A slot's trampoline
 pointer is a compile-time constant, so re-registering an already-registered
 slot is a semantic no-op that only leaks. `setHooks` tracks which slots are
-live engine-side and calls the ABI only on a real null↔set transition — so
+live core-side and calls the ABI only on a real null↔set transition — so
 repeated `setHooks` calls, the normal thing to do when reconfiguring between
 documents, are leak-free. A test drives 25 set/reset cycles to keep it that way.
 
@@ -261,17 +261,17 @@ What remains unavoidable: a caller who genuinely clears a live hook
 (`resetHooks`, or dropping one from the set) leaks 16 bytes per cleared slot.
 That is bounded by the number of clears, not by document count or size, so it
 does not accumulate in a sanitize loop. **Fixing it properly means freeing the
-old box in `swap_hook` engine-side, which is outside this leaf's remit.**
+old box in `swap_hook` core-side, which is outside this leaf's remit.**
 
-Separately, valgrind shows engine-internal leaks from `hs_embed_sanitize`
+Separately, valgrind shows core-internal leaks from `hs_embed_sanitize`
 itself (`aether_caps_malloc` under `string_substring` / `string_concat`, in
-`htmlsanitizer_resolve_url` among others). Those are the engine's, are reached
+`htmlsanitizer_resolve_url` among others). Those are the sanitizer core's, are reached
 identically from every binding, and are noted here only so a future reader does
 not mistake them for a Zig marshalling bug.
 
 One more: an interior NUL in an input string is an **error**
 (`error.InteriorNul`), not a silent truncation. Zig slices carry NULs happily
-and C strings do not; truncating would mean the engine sanitized less HTML than
+and C strings do not; truncating would mean the sanitizer core sanitized less HTML than
 you handed it, which is a security bug rather than a formatting one.
 
 A `*Sanitizer` is **not** safe for concurrent use — the native handle carries
@@ -304,13 +304,13 @@ Zig-specific hazards:
 - `sanitize_document`, `allow_data_attributes`, `clear`, and `item_at`
   out-of-range returning an owned `""` rather than null
 - interior-NUL rejection
-- 25 setHooks/resetHooks cycles, guarding the engine-leak workaround below
+- 25 setHooks/resetHooks cycles, guarding the core-leak workaround below
 - a long input that overruns the stack-buffer cutoff, proving nothing
   truncates at 256 bytes
 
 ```sh
-aeb zig/.tests.ae     # builds the engine, stages it, runs zig build test
-# or, with the engine already built:
+aeb zig/.tests.ae     # builds the sanitizer core, stages it, runs zig build test
+# or, with the sanitizer core already built:
 zig build test
 zig build test --summary all    # see the count
 ```

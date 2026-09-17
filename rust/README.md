@@ -3,7 +3,7 @@
 Cleans HTML of constructs that can lead to XSS.
 
 This crate is **marshalling only**. The sanitizer itself — HTML5 tokenizer,
-DOM, CSS parser, URL resolver, allow-lists — is the pure-Aether engine in
+DOM, CSS parser, URL resolver, allow-lists — is the pure-Aether sanitizer core in
 `core/htmlsanitizer.ae`, shared by every language binding in this monorepo and
 reached through the `aether_hs_embed_*` C ABI (`core/embed.ae`).
 
@@ -18,7 +18,7 @@ signature. Other bindings are expected to be diffable against it.
 htmlsanitizer = "1"
 ```
 
-The engine is loaded at runtime with [libloading](https://docs.rs/libloading).
+The sanitizer core is loaded at runtime with [libloading](https://docs.rs/libloading).
 Resolution order:
 
 1. an explicit path — `HtmlSanitizer::with_library(Some(path))`
@@ -64,7 +64,7 @@ s.allowed_tags().clear().extend(["b", "i"]);   // start from nothing
 
 ## Callbacks
 
-All seven engine hooks are wired. Each `on_*` takes a `'static` closure and
+All seven sanitizer core hooks are wired. Each `on_*` takes a `'static` closure and
 returns `&mut Self`, so they chain.
 
 ```rust
@@ -97,7 +97,7 @@ stops you retaining one.
 HTMLSANITIZER_LIB=../core/native/libhtmlsanitizer.so cargo test
 ```
 
-or, with the engine built for you:
+or, with the sanitizer core built for you:
 
 ```
 aeb rust/.tests.ae
@@ -118,8 +118,8 @@ extras covering the remaining callback shapes.
   `int`, and those are what actually run. See "ABI note" below.
 * Hook closures live in a `Box<Hooks>` owned by the sanitizer; the `user_data`
   we register is a stable pointer to a boxed `CallbackCtx`. `Drop` frees the
-  engine handle first, so no trampoline can fire after the closures go away.
-* `on_filter_url` must hand the engine a **libc-malloc'd** string it then
+  sanitizer core handle first, so no trampoline can fire after the closures go away.
+* `on_filter_url` must hand the sanitizer core a **libc-malloc'd** string it then
   owns. `native::malloc_cstring` uses `malloc` directly, because a
   Rust-allocated buffer would be freed by the wrong allocator.
 

@@ -11,7 +11,7 @@ import org.htmlsanitizer.Node
  *
  * <p>Registered through
  * {@code META-INF/groovy/org.codehaus.groovy.runtime.ExtensionModule}, so they
- * apply to the Java classes without wrapping them — the objects the engine
+ * apply to the Java classes without wrapping them — the objects the sanitizer core
  * hands a callback stay the very same borrowed views, which matters, because
  * wrapping them would invite retaining a wrapper past the callback that owns it.
  *

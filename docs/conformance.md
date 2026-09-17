@@ -2,12 +2,12 @@
 
 Every binding implements the **same** small set of checks. They are the
 contract: if a binding passes these, it is wired correctly; if it fails one,
-the bug is in that binding's marshalling, never in the engine (the engine is
+the bug is in that binding's marshalling, never in the sanitizer core (the sanitizer core is
 proven separately by `core_tests/.tests.ae` and `core_tests/.abi.ae`).
 
 Keep this list short on purpose. It is not a sanitizer test suite — the C#
 behavioural cases live in `core_tests/probe.ae` and run once, against the
-engine. A binding only has to prove that **each kind of value crosses the FFI
+sanitizer core. A binding only has to prove that **each kind of value crosses the FFI
 correctly**, which is what these twelve checks sample.
 
 | # | Check | What it would catch |
@@ -43,7 +43,7 @@ express native callbacks at all may skip 10–11 and must say so in its README.
 aeb <lang>/.tests.ae
 ```
 
-Each `.tests.ae` deps `core/.build.ae`, so the engine builds first and the
+Each `.tests.ae` deps `core/.build.ae`, so the sanitizer core builds first and the
 binding gets its path via `HTMLSANITIZER_LIB`.
 
 ## Running everything

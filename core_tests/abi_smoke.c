@@ -116,7 +116,7 @@ static int style_hook(void* ud, void* elem, const char* name, const char* value,
     return (name && strcmp(name, "-custom-thing") == 0) ? 1 : 0;
 }
 
-/* filter_url returns a malloc'd C string the engine takes ownership of, or
+/* filter_url returns a malloc'd C string the sanitizer core takes ownership of, or
  * the `resolved` pointer unchanged to mean "no rewrite". */
 static char* rewrite_url(void* ud, void* elem, const char* raw, const char* resolved) {
     (void)elem; (void)raw;

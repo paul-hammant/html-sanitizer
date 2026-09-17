@@ -1,4 +1,4 @@
-## htmlsanitizer — the Nim binding over the monorepo's one shared native engine.
+## htmlsanitizer — the Nim binding over the monorepo's one shared native sanitizer core.
 ##
 ## Clean HTML of constructs that can lead to Cross-Site Scripting (XSS).
 ##
@@ -12,16 +12,16 @@
 ## ========================================================
 ##
 ## Several bindings in this repo (Python/ctypes, Ruby/Fiddle, PHP/FFI) resolve
-## the engine at run time so they can report a friendly error when it is
+## the sanitizer core at run time so they can report a friendly error when it is
 ## missing. Nim is a compiled, statically-linked-by-default language, and the
 ## house style for that family (Go/cgo, Zig, Rust's `native.rs` aside) is to
 ## LINK. So we do: `{.passL.}` below points the linker at `nim/native` and
 ## `../core/native`, and bakes both in as `rpath` so an in-tree binary finds
-## the `.so` with no `LD_LIBRARY_PATH`. `nim/.tests.ae` stages the engine
+## the `.so` with no `LD_LIBRARY_PATH`. `nim/.tests.ae` stages the sanitizer core
 ## artifact into `nim/native/` before compiling, exactly as `go/.tests.ae`
 ## does for cgo, so the link and the rpath resolve wherever `aeb` put it.
 ##
-## The consequence to be aware of: the engine must exist at BUILD time, not
+## The consequence to be aware of: the sanitizer core must exist at BUILD time, not
 ## just at run time. A missing `.so` is a link error, not a nice exception.
 ##
 ## The two ownership rules
@@ -45,7 +45,7 @@
 ## The `int`-not-`long` trap
 ## =========================
 ##
-## The engine's codegen emits its closure calls as `int(*)(...)`. A host that
+## The sanitizer core's codegen emits its closure calls as `int(*)(...)`. A host that
 ## declares those parameters as C `long` gets a 4-vs-8-byte mismatch on LP64:
 ## garbage `reason` values, and on some ABIs a corrupted argument register.
 ## Nim's `int` is pointer-sized (64-bit here) — it is `long`, not `int`. So
@@ -55,15 +55,15 @@
 ## The GC keepalive requirement
 ## ============================
 ##
-## Registration hands the engine a raw C function pointer plus an opaque
+## Registration hands the sanitizer core a raw C function pointer plus an opaque
 ## `user_data` pointer. We pass the `Sanitizer` ref itself as `user_data`, cast
 ## to `pointer` — that is how a `{.cdecl.}` trampoline, which has no closure
 ## environment of its own, finds the Nim-side handler to invoke.
 ##
-## The engine keeps that pointer for as long as the hook is registered, but it
+## The sanitizer core keeps that pointer for as long as the hook is registered, but it
 ## is invisible to Nim's GC: as far as ORC/refc are concerned, nothing
 ## references the `Sanitizer`. If the last Nim reference goes out of scope the
-## object is freed and the engine is left holding a dangling `user_data`. So
+## object is freed and the sanitizer core is left holding a dangling `user_data`. So
 ## `newSanitizer` calls `GC_ref` on itself and `close` calls the matching
 ## `GC_unref`. That also pins the object's address, which matters for any GC
 ## that could otherwise move it.
@@ -105,7 +105,7 @@ type
     lkClasses = 4
     lkUriAttributes = 5
 
-  Reason* = enum ## Why the engine is about to remove something.
+  Reason* = enum ## Why the sanitizer core is about to remove something.
     rNotAllowedTag = 0
     rNotAllowedAttribute = 1
     rNotAllowedStyle = 2
@@ -205,12 +205,12 @@ proc hsAttrSetValue(a: pointer, value: cstring)
 # ---- version ----
 proc hsAbiVersion(): cint {.importc: "aether_hs_embed_abi_version", cdecl.}
 
-# ---- the engine's own strdup ----
+# ---- the sanitizer core's own strdup ----
 #
-# `on_filter_url` is the one hook that must hand the engine a malloc'd string
-# it will then own and `free()`. That free comes from the engine's libc, so the
+# `on_filter_url` is the one hook that must hand the sanitizer core a malloc'd string
+# it will then own and `free()`. That free comes from the sanitizer core's libc, so the
 # malloc must too — a Nim-allocated buffer would be released by the wrong
-# allocator. The engine already exports its own strdup for exactly this, so we
+# allocator. The sanitizer core already exports its own strdup for exactly this, so we
 # use it rather than binding libc `malloc` separately. (Unmangled: it is plain
 # C in core/_embed_support.c, not an Aether export.)
 proc hsRawDup(s: cstring): cstring {.importc: "hs_raw_dup", cdecl.}
@@ -293,7 +293,7 @@ proc value*(a: Attribute): string = takeString(hsAttrValue(a.p))
 
 proc `value=`*(a: Attribute, v: string) =
   ## Rewrite an attribute in place from inside a callback — e.g. canonicalise a
-  ## URL rather than remove the attribute. The engine COPIES the bytes
+  ## URL rather than remove the attribute. The sanitizer core COPIES the bytes
   ## (`hs_embed_attr_set_value` does a `string.concat("", value)`), so handing
   ## it this transient Nim buffer is safe; it does not alias our memory.
   checkNoNul(v)
@@ -323,14 +323,14 @@ type
     ## NOT safe for concurrent use — the handle carries mutable policy and hook
     ## state. Use one per thread, or serialise access.
     ##
-    ## This is a `ref` on purpose: its address is what the engine gets as
+    ## This is a `ref` on purpose: its address is what the sanitizer core gets as
     ## `user_data`, and `GC_ref`/`GC_unref` pin it for exactly as long as the
-    ## engine can call back into us.
+    ## sanitizer core can call back into us.
     handle: pointer
     pinned: bool                      ## have we GC_ref'd ourselves?
     # The registered handlers. Storing them here is what keeps them alive: the
     # pinned Sanitizer is a GC root, so its closures (and anything they capture)
-    # are reachable for as long as the engine may invoke them.
+    # are reachable for as long as the sanitizer core may invoke them.
     onRemovingTagCb: RemovingTagHandler
     onRemovingAttributeCb: RemovingAttributeHandler
     onRemovingStyleCb: RemovingStyleHandler
@@ -343,7 +343,7 @@ type
 # The trampolines.
 # ---------------------------------------------------------------------------
 #
-# These are the actual C function pointers the engine calls. They must be
+# These are the actual C function pointers the sanitizer core calls. They must be
 # `{.cdecl.}` top-level procs: a Nim closure is a two-word (proc, env) pair and
 # is NOT a C function pointer, which is the whole reason the ABI carries a
 # separate `user_data`.
@@ -421,8 +421,8 @@ proc trampFilterUrl(ud, elem: pointer, raw, resolved: cstring): cstring {.cdecl.
   ## Returning `resolved` unchanged is the ABI's "no rewrite" signal — the C
   ## trampoline compares pointers, so handing back the very pointer we were
   ## given costs no allocation and no copy. Anything else must be a fresh
-  ## malloc'd buffer the engine will `free()`, which is why this goes through
-  ## the engine's own `hs_raw_dup` and never through Nim's allocator.
+  ## malloc'd buffer the sanitizer core will `free()`, which is why this goes through
+  ## the sanitizer core's own `hs_raw_dup` and never through Nim's allocator.
   let s = ownerOf(ud)
   if s.isNil or s.onFilterUrlCb.isNil: return resolved
   try:
@@ -431,7 +431,7 @@ proc trampFilterUrl(ud, elem: pointer, raw, resolved: cstring): cstring {.cdecl.
     if outv == r:
       return resolved                       # no rewrite: hand the original back
     if outv.find('\0') >= 0:
-      # A callback cannot report an error to the engine, so truncate at the NUL
+      # A callback cannot report an error to the sanitizer core, so truncate at the NUL
       # rather than smuggle a half-string across.
       return hsRawDup(outv[0 ..< outv.find('\0')].cstring)
     hsRawDup(outv.cstring)
@@ -445,14 +445,14 @@ proc trampFilterUrl(ud, elem: pointer, raw, resolved: cstring): cstring {.cdecl.
 proc close*(s: Sanitizer)
 
 proc newSanitizer*(): Sanitizer =
-  ## Create a sanitizer with the engine's secure defaults already populated.
+  ## Create a sanitizer with the sanitizer core's secure defaults already populated.
   ##
   ## Pair with `close`, or use the `withSanitizer` template.
   new(result)
   result.handle = hsNew()
   if result.handle.isNil:
     raise newException(HtmlSanitizerError, "failed to create the native sanitizer")
-  # Pin ourselves BEFORE any hook can be registered: from here on the engine
+  # Pin ourselves BEFORE any hook can be registered: from here on the sanitizer core
   # may be handed this address as `user_data`, and it must stay valid and
   # unmoved until `close` unpins it. See the GC keepalive note at the top.
   GC_ref(result)
@@ -481,7 +481,7 @@ proc close*(s: Sanitizer) =
   ## while a plain free leaks none. Measured from pure C — see the
   ## "Known issues" table in the repo README.
   ##
-  ## Nor is the clear needed for safety: the engine cannot invoke a hook after
+  ## Nor is the clear needed for safety: the sanitizer core cannot invoke a hook after
   ## `hsFree` returns, and nothing calls into `s` in between.
   if s.isNil or s.handle.isNil:
     return
@@ -513,7 +513,7 @@ template withSanitizer*(name: untyped, body: untyped) =
     name.close()
 
 proc abiVersion*(): int =
-  ## ABI revision of the linked engine. Bumped only when a symbol is ADDED.
+  ## ABI revision of the linked sanitizer core. Bumped only when a symbol is ADDED.
   int(hsAbiVersion())
 
 proc abiVersion*(s: Sanitizer): int = abiVersion()
@@ -533,8 +533,8 @@ proc sanitize*(s: Sanitizer, html: string, baseUrl: string = ""): string =
   takeString(hsSanitize(s.handle, html.cstring, baseUrl.cstring))
 
 proc sanitizeDocument*(s: Sanitizer, html: string, baseUrl: string = ""): string =
-  ## Sanitize a full HTML document. A distinct engine entry point from
-  ## `sanitize`, even though the engine currently treats the two alike.
+  ## Sanitize a full HTML document. A distinct sanitizer core entry point from
+  ## `sanitize`, even though the sanitizer core currently treats the two alike.
   checkOpen(s)
   checkNoNul(html)
   checkNoNul(baseUrl)
@@ -627,12 +627,12 @@ proc len*(l: PolicyList): int =
   int(hsCount(l.s.handle, cint(ord(l.which))))
 
 proc `[]`*(l: PolicyList, index: int): string =
-  ## The item at `index` in the engine's own order; `""` when out of range.
+  ## The item at `index` in the sanitizer core's own order; `""` when out of range.
   checkOpen(l.s)
   takeString(hsItemAt(l.s.handle, cint(ord(l.which)), cint(index)))
 
 proc items*(l: PolicyList): seq[string] =
-  ## Enumerate in the engine's own order — unspecified, but stable between
+  ## Enumerate in the sanitizer core's own order — unspecified, but stable between
   ## mutations, so each item appears exactly once.
   ##
   ## Note this is O(n^2): the ABI snapshots the whole set per `item_at`. That
@@ -658,7 +658,7 @@ iterator pairsOf*(l: PolicyList): string =
 #
 # Store the handler on the (pinned) Sanitizer, then register the trampoline
 # with `s` itself as `user_data`. Passing `nil` for the handler clears the hook
-# on both sides — we hand the engine a null fn, which is its documented
+# on both sides — we hand the sanitizer core a null fn, which is its documented
 # "no callback" state.
 #
 # Each returns the Sanitizer so registrations chain.
@@ -732,7 +732,7 @@ proc onFilterUrl*(s: Sanitizer, h: FilterUrlHandler): Sanitizer {.discardable.} 
   ## Called for every URI attribute. Return the URL to use — the `resolved`
   ## argument unchanged for "no rewrite", or `""` to drop the attribute. You do
   ## not manage the returned string's memory; the binding copies it into a
-  ## buffer the engine takes ownership of.
+  ## buffer the sanitizer core takes ownership of.
   checkOpen(s)
   s.onFilterUrlCb = h
   if h.isNil:

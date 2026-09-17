@@ -43,11 +43,11 @@
 <body>
 
 <h1>HtmlSanitizer — running in the browser as WebAssembly</h1>
-<p class="sub">The same pure-Aether engine the Python, Java, Go and Rust bindings use — compiled to wasm32, ~62&nbsp;KB.</p>
+<p class="sub">The same pure-Aether sanitizer core the Python, Java, Go and Rust bindings use — compiled to wasm32, ~62&nbsp;KB.</p>
 
 <p class="note">
   <strong>Why this matters:</strong> the sanitizer here is not a JavaScript
-  reimplementation. It is byte-for-byte the same engine as your backend runs,
+  reimplementation. It is byte-for-byte the same sanitizer core as your backend runs,
   so what the server strips and what the browser strips cannot diverge.
 </p>
 
@@ -78,7 +78,7 @@
     <div class="panel" id="live"></div>
   </div>
   <div>
-    <div class="label">Engine</div>
+    <div class="label">Sanitizer core</div>
     <div class="panel"><pre id="info" class="status">loading wasm…</pre></div>
   </div>
 </div>

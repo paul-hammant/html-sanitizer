@@ -1,11 +1,11 @@
 'use strict';
 /**
- * koffi bindings for the HtmlSanitizer engine (libhtmlsanitizer.so).
+ * koffi bindings for the HtmlSanitizer core (libhtmlsanitizer.so).
  *
  * This module is the ONLY place in the JavaScript binding that knows about
  * the C ABI. Everything above it (`sanitizer.js`) is idiomatic JavaScript
  * over these symbols. No sanitizer logic lives here or anywhere else in this
- * package — the engine is `core/htmlsanitizer.ae`, shared by every binding.
+ * package — the sanitizer core is `core/htmlsanitizer.ae`, shared by every binding.
  *
  * Library resolution, in order:
  *   1. an explicit path passed to `load(path)` / `new HtmlSanitizer({ nativeLib })`
@@ -48,7 +48,7 @@ const NODE_COMMENT = 4;
 
 // ---- callback prototypes ----
 //
-// Each takes an opaque user_data FIRST; the engine's trampoline supplies it.
+// Each takes an opaque user_data FIRST; the sanitizer core's trampoline supplies it.
 // The `removing_*` family returns int — NON-ZERO CANCELS the removal.
 //
 // `const char *` PARAMETERS arrive already decoded as JS strings (koffi knows
@@ -69,7 +69,7 @@ const CB_REMOVING_COMMENT =
   koffi.proto('int CbRemovingComment(void *ud, void *node)');
 const CB_POST_PROCESS =
   koffi.proto('void CbPostProcess(void *ud, void *node)');
-// filter_url hands back a malloc'd C string the engine takes ownership of,
+// filter_url hands back a malloc'd C string the sanitizer core takes ownership of,
 // so it is declared `void *` and we allocate it ourselves (see sanitizer.js).
 const CB_FILTER_URL =
   koffi.proto('void *CbFilterUrl(void *ud, void *elem, const char *raw, const char *resolved)');
@@ -88,7 +88,7 @@ function* candidates(explicit) {
 }
 
 /**
- * Load the engine .so, caching it process-wide. Returns the symbol table.
+ * Load the sanitizer core .so, caching it process-wide. Returns the symbol table.
  */
 function load(explicit) {
   if (cached !== null && !explicit) return cached;
@@ -105,7 +105,7 @@ function load(explicit) {
   }
   if (lib === null) {
     throw new Error(
-      `could not load the HtmlSanitizer engine (${LIB_NAME}). Set ` +
+      `could not load the HtmlSanitizer core (${LIB_NAME}). Set ` +
       'HTMLSANITIZER_LIB to its absolute path, or install a package that ' +
       `bundles it. Last error: ${last && last.message}`);
   }
@@ -177,7 +177,7 @@ function declare(lib) {
 /**
  * Copy an ABI-returned string out and free it through the ABI.
  *
- * Every char* the engine returns is caller-owned; leaking it is the single
+ * Every char* the sanitizer core returns is caller-owned; leaking it is the single
  * easiest mistake to make in any of these bindings.
  *
  * Koffi 3 represents pointers as BigInt, and a null pointer as `null` — so
@@ -194,7 +194,7 @@ function takeString(api, ptr) {
 
 /**
  * Read a borrowed `const char *` a callback was handed. NOT owned by us —
- * the engine keeps it, so there is nothing to free. Koffi decodes typed
+ * the sanitizer core keeps it, so there is nothing to free. Koffi decodes typed
  * `const char *` callback parameters for us, so this is usually a no-op;
  * it exists so the call sites do not have to care.
  */

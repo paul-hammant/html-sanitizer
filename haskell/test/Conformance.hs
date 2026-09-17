@@ -4,7 +4,7 @@
 -- The 12-check binding conformance suite (@docs\/conformance.md@).
 --
 -- Proves the Haskell binding marshals every value shape across the FFI. It is
--- __not__ a sanitizer test suite — the behavioural cases live in the engine's
+-- __not__ a sanitizer test suite — the behavioural cases live in the sanitizer core's
 -- own tests and run once, in Aether.
 --
 -- == Why a plain runner and not hspec\/tasty
@@ -65,7 +65,7 @@ assertFail :: String -> IO a
 assertFail = ioError . userError
 
 -- | Run one check with a freshly-created sanitizer, so each starts from the
--- engine's defaults, and close it afterwards even if the body throws.
+-- sanitizer core's defaults, and close it afterwards even if the body throws.
 check :: Failures -> String -> (Sanitizer -> IO ()) -> IO ()
 check fs name body = checkIO fs name (withSanitizer body)
 
@@ -136,7 +136,7 @@ main = do
   hSetEncoding stdout utf8
   putStrLn "=== htmlsanitizer Haskell binding conformance ==="
   v <- abiVersion
-  putStrLn ("engine: ABI v" ++ show v)
+  putStrLn ("sanitizer core: ABI v" ++ show v)
 
   fs <- newIORef []
   runChecks fs
@@ -348,7 +348,7 @@ runChecks fs = do
   check fs "re-registering a hook does not crash or double-free" $ \s -> do
     -- Each registration mints a new FunPtr stub; the superseded ones stay
     -- retained until close. If the binding freed the old stub eagerly, the
-    -- engine's next call would jump through reclaimed memory — which shows up
+    -- sanitizer core's next call would jump through reclaimed memory — which shows up
     -- here as a segfault, not a failed assertion.
     onRemovingTag s $ Just $ \node _r -> (== "keep-me") <$> nodeName node
     onRemovingTag s $ Just $ \node _r -> (== "keep-me") <$> nodeName node
@@ -384,14 +384,14 @@ runChecks fs = do
     eqStr "negative index" neg ""
 
   check fs "every policy list is reachable" $ \s -> do
-    -- Proves the `which` selector constants line up with the engine's, in all
+    -- Proves the `which` selector constants line up with the sanitizer core's, in all
     -- six positions — an off-by-one here would silently edit the wrong list.
     forM_ [minBound .. maxBound :: Which] $ \w -> do
       _ <- allow s w "probe-item"
       hit <- isAllowed s w "probe-item"
       isTrue ("selector " ++ show w ++ " round-trips") hit
 
-  check fs "items enumerates in the engine's own order" $ \s -> do
+  check fs "items enumerates in the sanitizer core's own order" $ \s -> do
     raw <- items s Schemes
     eqInt "raw count" (length raw) 2
     isTrue "sorting it gives [http, https]" (sort raw == ["http", "https"])

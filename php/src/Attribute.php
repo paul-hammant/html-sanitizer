@@ -31,7 +31,7 @@ final class Attribute
 
     /**
      * Rewrite the value in place (e.g. to canonicalise a URL rather than
-     * remove the attribute). The engine copies the string, so PHP's transient
+     * remove the attribute). The sanitizer core copies the string, so PHP's transient
      * buffer is safe here.
      */
     public function setValue(string $value): void

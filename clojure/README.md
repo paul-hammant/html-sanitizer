@@ -4,7 +4,7 @@ Cleans HTML of constructs that can lead to XSS.
 
 This layer is **idiomatic sugar only**. It carries no sanitizer logic *and no
 FFI*: it calls the Java binding (`java/`, FFM / Panama) and reaches the
-pure-Aether engine in `core/htmlsanitizer.ae` through it, by ordinary JVM
+pure-Aether sanitizer core in `core/htmlsanitizer.ae` through it, by ordinary JVM
 interop.
 
 That is deliberate. There is exactly **one** FFI per runtime in this monorepo,
@@ -46,13 +46,13 @@ For the one-off case there is `sanitize-once`, which creates and closes for you:
 ;; => "<div>Hello</div>"
 ```
 
-The sanitizer is **not thread-safe** — the engine calls hooks re-entrantly
+The sanitizer is **not thread-safe** — the sanitizer core calls hooks re-entrantly
 during `sanitize`.
 
 ## Allow-lists
 
 Six live views, selected by keyword: `:tags`, `:attributes`, `:css-properties`,
-`:schemes`, `:classes`, `:uri-attributes`. They are views on the engine, not
+`:schemes`, `:classes`, `:uri-attributes`. They are views on the sanitizer core, not
 copies.
 
 ```clojure
@@ -112,7 +112,7 @@ Removal reasons arrive as keywords — `:not-allowed-tag`,
 `:not-allowed-attribute`, `:not-allowed-style`, `:not-allowed-url-value`,
 `:not-allowed-value`, `:not-allowed-css-class`, `:class-attribute-empty`,
 `:style-attribute-empty` — or `:unknown` for a code this build does not know.
-The ABI's constants are append-only, so `:unknown` is a newer engine, not an
+The ABI's constants are append-only, so `:unknown` is a newer sanitizer core, not an
 error.
 
 ## A policy as data
@@ -208,7 +208,7 @@ not report a pass.
 CLOJURE_JARS=/path/to/clojure-jars aeb clojure/.tests.ae
 ```
 
-## Engine resolution
+## Sanitizer core resolution
 
 Inherited from the Java binding:
 

@@ -1,7 +1,7 @@
 --- The 12-check binding conformance suite (docs/conformance.md).
 ---
 --- Proves the Lua binding marshals every value shape across the FFI. It is
---- NOT a sanitizer test suite — the behavioural cases live in the engine's own
+--- NOT a sanitizer test suite — the behavioural cases live in the sanitizer core's own
 --- tests and run once, in Aether.
 ---
 --- Lua 5.4 has no de-facto-standard test framework in its distribution, so
@@ -63,7 +63,7 @@ local function contains(list, want, what)
 end
 
 print("=== htmlsanitizer Lua binding conformance ===")
-print(string.format("engine: %s (ABI v%d)", hs.engine_path(), hs.abi_version()))
+print(string.format("sanitizer core: %s (ABI v%d)", hs.engine_path(), hs.abi_version()))
 
 -- ---- the twelve ----
 

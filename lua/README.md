@@ -3,9 +3,9 @@
 Clean HTML of constructs that can lead to Cross-Site Scripting (XSS).
 
 This binding is a **thin Lua 5.4 C extension** over the monorepo's one shared
-native engine — `core/native/libhtmlsanitizer.so`, compiled from pure Aether.
+native sanitizer core — `core/native/libhtmlsanitizer.so`, compiled from pure Aether.
 It contains **no sanitizer logic**: every call marshals to an
-`aether_hs_embed_*` symbol. One engine, one set of behaviours, N language
+`aether_hs_embed_*` symbol. One sanitizer core, one set of behaviours, N language
 surfaces.
 
 Two files make up the binding:
@@ -21,9 +21,9 @@ Standard Lua 5.4 has no FFI. LuaJIT's `ffi` library is not Lua 5.4 and would
 pin the binding to a fork stuck at 5.1 semantics. So this binding does what
 Lua bindings normally do: a small C extension.
 
-It still **`dlopen`s** the engine rather than linking it, so the same
+It still **`dlopen`s** the sanitizer core rather than linking it, so the same
 `HTMLSANITIZER_LIB` resolution every other binding uses applies here, and one
-engine `.so` serves them all.
+sanitizer core `.so` serves them all.
 
 ## Building
 
@@ -99,7 +99,7 @@ deterministically is better.
 
 ### Policy lists
 
-Six set-like views, each backed by the engine's own list — there is no Lua
+Six set-like views, each backed by the sanitizer core's own list — there is no Lua
 mirror to fall out of sync:
 
 ```lua
@@ -123,7 +123,7 @@ for scheme in s.allowed_schemes:iter() do print(scheme) end
 s.allowed_classes:clear()
 ```
 
-`items()` enumerates in the engine's own (unspecified but stable) order;
+`items()` enumerates in the sanitizer core's own (unspecified but stable) order;
 `sorted()` is the deterministic version. Indices are **1-based** throughout —
 the C extension converts to the ABI's 0-based indexing so the Lua surface
 never sees it.
@@ -157,7 +157,7 @@ s:on_filter_url(function(elem, raw, resolved) return resolved end)  -- "" drops 
 ```
 
 `on_filter_url` returns the URL to use. The string is `strdup`'d into a buffer
-the engine takes ownership of — you do not free it.
+the sanitizer core takes ownership of — you do not free it.
 
 ### Node and Attribute
 
@@ -182,7 +182,7 @@ attr:set_value("https://example.com/safe")   -- rewrite in place
 ```
 
 `attr:set_value` is safe with Lua's own (collectable) string buffer:
-`aether_hs_embed_attr_set_value` **copies** its argument engine-side.
+`aether_hs_embed_attr_set_value` **copies** its argument core-side.
 
 **Retained nodes error rather than crash.** Every `Node`/`Attribute` is
 stamped with a generation counter that the extension bumps when `sanitize`
@@ -199,7 +199,7 @@ escaped:name()   --> error: ... borrowed for the duration of a callback and
 
 ## How the callback bridge works
 
-The C extension registers seven plain C trampolines with the engine and passes
+The C extension registers seven plain C trampolines with the sanitizer core and passes
 the `Sanitizer*` userdata as the ABI's opaque **`user_data`** — the pointer
 handed back as each callback's *first* argument. From it a trampoline recovers
 the `lua_State` and the handler table.
@@ -208,10 +208,10 @@ Two details are load-bearing:
 
 - **Keepalive.** Each sanitizer owns a table of Lua handler functions anchored
   in `LUA_REGISTRYINDEX` (via `luaL_ref`), so a handler cannot be collected
-  while the engine can still call it. `close()` unrefs it. This is the Lua
+  while the sanitizer core can still call it. `close()` unrefs it. This is the Lua
   equivalent of ctypes' keepalive list.
 - **No `longjmp` across C frames.** A Lua error inside a handler must not
-  unwind through the engine's stack, so every trampoline invokes the handler
+  unwind through the sanitizer core's stack, so every trampoline invokes the handler
   with `lua_pcall`. On error it prints to stderr and returns the **safe
   default**: `0` for the `removing_*` family (let the removal proceed) and the
   unmodified `resolved` pointer for `filter_url` (no rewrite). A broken
@@ -220,20 +220,20 @@ Two details are load-bearing:
 Integer arguments are declared `int`, matching the ABI; declaring `long`
 would give a 4-vs-8-byte mismatch on LP64 and garbage `reason` values.
 
-`sanitize()` also guards against re-entry from inside a callback — the engine
+`sanitize()` also guards against re-entry from inside a callback — the sanitizer core
 holds a half-built DOM at that point — and raises instead.
 
 ## Memory
 
-Every `char*` the engine returns is caller-owned. `push_owned()` is the single
+Every `char*` the sanitizer core returns is caller-owned. `push_owned()` is the single
 place a returned string becomes a Lua string, and it always calls
 `aether_hs_embed_free_string`. Borrowed `const char*` **arguments** (the
 `name`/`value`/`raw`/`resolved` callback parameters) are copied with
-`lua_pushstring` and never freed — the engine owns those.
+`lua_pushstring` and never freed — the sanitizer core owns those.
 
-Strings handed *to* the engine are Lua's own buffers, valid for the duration
+Strings handed *to* the sanitizer core are Lua's own buffers, valid for the duration
 of the call. The one exception is `on_filter_url`'s return value, which is
-`strdup`'d precisely because the engine frees it.
+`strdup`'d precisely because the sanitizer core frees it.
 
 A sanitizer is **not** safe for concurrent use across coroutines that could
 interleave a `sanitize` call, and the trampolines assume the `lua_State` that
@@ -242,7 +242,7 @@ created the sanitizer. Use one per state.
 ### A note on RSS growth (not this binding)
 
 Repeated `sanitize()` calls grow RSS by roughly 0.2–0.3 kB per call. That is
-**engine-side**, not a binding leak — it is the `heap.free` / nested-string
+**core-side**, not a binding leak — it is the `heap.free` / nested-string
 refcount caveat described in the root `README.md`. Measured over 50,000
 identical calls on this checkout:
 
@@ -254,7 +254,7 @@ identical calls on this checkout:
 The Lua path grows *less* than raw C for the same workload, because Lua's GC
 reclaims the wrapper objects the binding allocates. In other words the binding
 adds nothing of its own: every returned `char*` is being freed. Long-lived
-processes sanitizing untrusted input in a loop should be aware of the engine
+processes sanitizing untrusted input in a loop should be aware of the sanitizer core
 behaviour regardless of which binding they use.
 
 ## Tests
@@ -270,8 +270,8 @@ Checks 10 and 11 — the callback trampoline and the string-returning
 nothing.
 
 ```sh
-aeb lua/.tests.ae     # builds the engine + extension, then runs the suite
-# or, with the engine already built:
+aeb lua/.tests.ae     # builds the sanitizer core + extension, then runs the suite
+# or, with the sanitizer core already built:
 HTMLSANITIZER_LIB=../core/native/libhtmlsanitizer.so ./run_tests.sh
 ```
 

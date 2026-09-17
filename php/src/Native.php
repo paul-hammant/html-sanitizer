@@ -5,7 +5,7 @@
  *
  * This file is the ONLY place in the PHP binding that knows about the C ABI.
  * Everything above it (HtmlSanitizer.php) is idiomatic PHP over these symbols.
- * No sanitizer logic lives here or anywhere else in this package — the engine
+ * No sanitizer logic lives here or anywhere else in this package — the sanitizer core
  * is core/htmlsanitizer.ae, shared by every language binding.
  *
  * ## Naming
@@ -92,7 +92,7 @@ final class Native
         /* call fails. */
         /* */
         /* Each takes user_data FIRST; every integer is `int`, never `long` */
-        /* (the engine emits its closure calls as int(*)(...), so `long` would */
+        /* (the sanitizer core emits its closure calls as int(*)(...), so `long` would */
         /* be a 4-vs-8-byte mismatch on LP64 and garbage `reason` values). */
         typedef int   (*hs_cb_removing_tag)(void* ud, void* node, int reason);
         typedef int   (*hs_cb_removing_attribute)(void* ud, void* elem, void* attr, int reason);
@@ -152,14 +152,14 @@ final class Native
         /* ---- version / introspection ---- */
         int    aether_hs_embed_abi_version(void);
 
-        /* ---- the allocator the engine itself frees with ---- */
+        /* ---- the allocator the sanitizer core itself frees with ---- */
         /* */
-        /* on_filter_url must return a buffer the ENGINE frees. FFI::new's */
+        /* on_filter_url must return a buffer the sanitizer core frees. FFI::new's */
         /* memory is owned by PHP and would be freed a second time, so the */
-        /* replacement URL has to come from malloc. hs_raw_dup is the engine's */
+        /* replacement URL has to come from malloc. hs_raw_dup is the sanitizer core's */
         /* own malloc'd strdup (core/_embed_support.c) and is exported by the */
         /* same .so, so it needs no second FFI::cdef against libc — and it is */
-        /* by construction the exact counterpart of the engine's free(). */
+        /* by construction the exact counterpart of the sanitizer core's free(). */
         char*  hs_raw_dup(const char* s);
         C;
 
@@ -167,7 +167,7 @@ final class Native
     private static ?string $path = null;
 
     /**
-     * Load the engine, caching it process-wide when no explicit path is given.
+     * Load the sanitizer core, caching it process-wide when no explicit path is given.
      *
      * Resolution order:
      *   1. an explicit $path passed here
@@ -208,7 +208,7 @@ final class Native
         }
 
         throw new RuntimeException(sprintf(
-            "htmlsanitizer: could not load the engine (%s). Set "
+            "htmlsanitizer: could not load the sanitizer core (%s). Set "
             . "HTMLSANITIZER_LIB to its absolute path, or build it with:\n"
             . "  cd core && ae build --emit=lib embed.ae --extra _embed_support.c "
             . "-o native/%s\nTried: %s\nLast error: %s",
@@ -219,7 +219,7 @@ final class Native
         ));
     }
 
-    /** Where the engine was actually loaded from, once known. */
+    /** Where the sanitizer core was actually loaded from, once known. */
     public static function path(): ?string
     {
         return self::$path;
@@ -264,7 +264,7 @@ final class Native
     /**
      * Copy an ABI-returned string out and free it through the ABI.
      *
-     * Every char* the engine returns is caller-owned; leaking it is the single
+     * Every char* the sanitizer core returns is caller-owned; leaking it is the single
      * easiest mistake to make in any of these bindings. Every string result in
      * this package goes through here.
      *
@@ -284,7 +284,7 @@ final class Native
 
     /**
      * Read a BORROWED const char* (a callback argument) without freeing it —
-     * the engine owns those.
+     * the sanitizer core owns those.
      *
      * PHP's FFI may hand a `const char*` callback argument to the closure
      * either as an `FFI\CData` pointer or, since the ae >= 0.677 callback ABI,

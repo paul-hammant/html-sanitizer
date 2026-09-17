@@ -1,8 +1,8 @@
 'use strict';
 /**
- * htmlsanitizer — JavaScript binding for the shared HtmlSanitizer engine.
+ * htmlsanitizer — JavaScript binding for the shared HtmlSanitizer core.
  *
- * The engine (HTML5 tokenizer, DOM, CSS parser, URL resolver, allow-lists) is
+ * The sanitizer core (HTML5 tokenizer, DOM, CSS parser, URL resolver, allow-lists) is
  * pure Aether in core/htmlsanitizer.ae and is shared by every language
  * binding in this monorepo. This package is marshalling only.
  *

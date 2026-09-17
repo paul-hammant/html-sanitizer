@@ -4,10 +4,10 @@
 //// which lives in `erlang/` and is compiled exactly once. There is no C source
 //// in this directory and no second `.so` — every function here is an
 //// `@external(erlang, "htmlsanitizer_nif", ...)` binding onto the very same
-//// compiled module the Erlang and Elixir bindings load. One engine, one NIF,
+//// compiled module the Erlang and Elixir bindings load. One sanitizer core, one NIF,
 //// three languages.
 ////
-//// The engine itself (`core/native/libhtmlsanitizer.so`) is pure Aether. No
+//// The sanitizer core itself (`core/native/libhtmlsanitizer.so`) is pure Aether. No
 //// sanitizer logic lives in this file: everything marshals to an
 //// `aether_hs_embed_*` call across the C ABI in `core/embed.ae`.
 ////
@@ -27,7 +27,7 @@
 ////
 //// ## Callbacks
 ////
-//// This binding exposes **none** of the engine's hooks, so conformance checks
+//// This binding exposes **none** of the sanitizer core's hooks, so conformance checks
 //// 10 and 11 are not implemented. A NIF cannot synchronously call back into
 //// the BEAM. See `README.md` — the surface is absent rather than faked.
 ////
@@ -36,7 +36,7 @@
 //// This module is **Erlang-target only**. It cannot compile to JavaScript,
 //// because the whole binding is a NIF. That is not a limitation worth working
 //// around: the monorepo already has a JavaScript binding that talks to the
-//// same engine over koffi.
+//// same sanitizer core over koffi.
 
 import gleam/list
 import gleam/string
@@ -52,11 +52,11 @@ pub type Sanitizer
 pub type Error {
   /// The sanitizer has already been closed.
   Closed
-  /// The engine refused to allocate a sanitizer.
+  /// The sanitizer core refused to allocate a sanitizer.
   AllocFailed
 }
 
-/// One of the engine's six policy lists.
+/// One of the sanitizer core's six policy lists.
 ///
 /// These map onto the ABI's integer selectors, which are append-only and must
 /// never be renumbered.
@@ -83,7 +83,7 @@ fn which(policy: PolicyList) -> Int {
 
 // ---- lifecycle ----
 
-/// Create a sanitizer with the engine's secure defaults populated.
+/// Create a sanitizer with the sanitizer core's secure defaults populated.
 @external(erlang, "htmlsanitizer_nif", "new")
 pub fn new() -> Result(Sanitizer, Error)
 
@@ -224,7 +224,7 @@ pub fn is_allowed(sanitizer: Sanitizer, policy: PolicyList, item: String) -> Boo
 /// Empty a policy list.
 ///
 /// The "start from nothing" move for a caller who wants a strict allow-list
-/// rather than the engine's permissive defaults.
+/// rather than the sanitizer core's permissive defaults.
 pub fn clear(sanitizer: Sanitizer, policy: PolicyList) -> Bool {
   clear_ffi(sanitizer, which(policy))
 }
@@ -249,6 +249,6 @@ pub fn sorted_items(sanitizer: Sanitizer, policy: PolicyList) -> List(String) {
 
 // ---- introspection ----
 
-/// The engine's ABI revision.
+/// The sanitizer core's ABI revision.
 @external(erlang, "htmlsanitizer_nif", "abi_version")
 pub fn abi_version() -> Int

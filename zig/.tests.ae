@@ -1,13 +1,13 @@
 // Zig binding tests. Like the Go binding (and unlike the dlopen-based
-// Python/Ruby ones), Zig LINKS the engine, so the .so must exist at BUILD
-// time as well as run time. We dep the shared engine node and hand its
+// Python/Ruby ones), Zig LINKS the sanitizer core, so the .so must exist at BUILD
+// time as well as run time. We dep the shared sanitizer core node and hand its
 // artifact path straight to `zig build` as -Dengine=..., which bldr.zig
 // turns into both a -L search path and an rpath — so the test binary links
 // AND then finds the library at run time, no matter where aeb put it.
 //
 // The suite itself is `zig test` blocks (src/conformance.zig, pulled in by
 // src/root.zig), so there is nothing to install and no package fetch: the
-// binding has no dependencies beyond libc and the engine.
+// binding has no dependencies beyond libc and the sanitizer core.
 import bldr
 import std.os
 
@@ -24,7 +24,7 @@ aeb(cap) {
             return 0
         }
     
-        // Also stage the engine into zig/native. -Dengine already points the
+        // Also stage the sanitizer core into zig/native. -Dengine already points the
         // linker and the rpath at the artifact, so this is belt-and-braces for a
         // developer running a bare `zig build test` afterwards without aeb — the
         // native/ directory is second in bldr.zig's search order.
@@ -32,7 +32,7 @@ aeb(cap) {
         _m = os.system("mkdir -p \"${dest}\"")
         cp = os.system("cp -f \"${lib}\" \"${dest}/libhtmlsanitizer.so\"")
         if cp != 0 {
-            println("zig: could not stage the engine into zig/native")
+            println("zig: could not stage the sanitizer core into zig/native")
             return 1
         }
     

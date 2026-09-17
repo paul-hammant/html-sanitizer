@@ -2,7 +2,7 @@
 //
 // This file is the ONLY place in the .NET binding that knows about the C ABI.
 // Everything above it (HtmlSanitizer.cs) is idiomatic C# over these symbols.
-// No sanitizer logic lives here or anywhere else in this assembly — the engine
+// No sanitizer logic lives here or anywhere else in this assembly — the sanitizer core
 // is core/htmlsanitizer.ae, shared by every language binding.
 //
 // ## Naming
@@ -26,7 +26,7 @@
 // ## Callback ABI
 //
 // Each hook receives the opaque `user_data` registered alongside it as its
-// **first** argument; the engine's C trampolines (core/_embed_support.c)
+// **first** argument; the sanitizer core's C trampolines (core/_embed_support.c)
 // supply it. Integer arguments are C `int`, NOT `long` — which is why every
 // delegate below uses `int` and never `nint`/`long`.
 
@@ -55,7 +55,7 @@ public enum AllowListKind
     UriAttributes = 5,
 }
 
-/// <summary>Why the engine is about to remove something.</summary>
+/// <summary>Why the sanitizer core is about to remove something.</summary>
 public enum RemovalReason
 {
     /// <summary>The tag is not in <c>AllowedTags</c>.</summary>
@@ -124,7 +124,7 @@ public delegate void CbPostProcess(IntPtr userData, IntPtr node);
 
 /// <summary>
 /// char* f(void* ud, void* elem, const char* raw, const char* resolved)
-/// — returns a malloc'd C string the engine takes ownership of, or the
+/// — returns a malloc'd C string the sanitizer core takes ownership of, or the
 /// `resolved` pointer unchanged to mean "no rewrite".
 /// </summary>
 [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
@@ -271,13 +271,13 @@ public static class Native
     [DllImport(Lib, EntryPoint = "aether_hs_embed_abi_version", CallingConvention = CallingConvention.Cdecl)]
     public static extern int AbiVersion();
 
-    // ---- the allocator the engine itself frees with ----
+    // ---- the allocator the sanitizer core itself frees with ----
     //
-    // on_filter_url must return a buffer the ENGINE frees. Marshal's
-    // AllocHGlobal/StringToCoTaskMemUTF8 use allocators the engine's free()
+    // on_filter_url must return a buffer the sanitizer core frees. Marshal's
+    // AllocHGlobal/StringToCoTaskMemUTF8 use allocators the sanitizer core's free()
     // knows nothing about, so the replacement URL has to come from malloc.
     //
-    // hs_raw_dup is the engine's own malloc'd strdup (core/_embed_support.c),
+    // hs_raw_dup is the sanitizer core's own malloc'd strdup (core/_embed_support.c),
     // exported by the same library. Using it rather than P/Invoking libc's
     // strdup avoids a second DllImport whose module name differs per platform
     // ("libc" vs "msvcrt", "_strdup" vs "strdup"), and is by construction the
@@ -287,7 +287,7 @@ public static class Native
     private static extern IntPtr RawDup(byte[] s);
 
     /// <summary>
-    /// Duplicate a string into a malloc'd buffer the engine takes ownership
+    /// Duplicate a string into a malloc'd buffer the sanitizer core takes ownership
     /// of. Only for <see cref="CbFilterUrl"/> returns.
     /// </summary>
     public static IntPtr StrDup(string? value) => RawDup(Encode(value));
@@ -308,7 +308,7 @@ public static class Native
     /// <summary>
     /// Copy an ABI-returned string out and free it through the ABI.
     ///
-    /// Every char* the engine returns is caller-owned; leaking it is the
+    /// Every char* the sanitizer core returns is caller-owned; leaking it is the
     /// single easiest mistake to make in any of these bindings. Every string
     /// result in this assembly goes through here.
     /// </summary>
@@ -327,7 +327,7 @@ public static class Native
 
     /// <summary>
     /// Read a BORROWED const char* (a callback argument) without freeing it —
-    /// the engine owns those.
+    /// the sanitizer core owns those.
     /// </summary>
     public static string BorrowString(IntPtr ptr) =>
         ptr == IntPtr.Zero ? string.Empty : Marshal.PtrToStringUTF8(ptr) ?? string.Empty;
@@ -338,7 +338,7 @@ public static class Native
     private static bool _resolverInstalled;
     private static string? _explicitPath;
 
-    /// <summary>The path the engine was actually loaded from, once known.</summary>
+    /// <summary>The path the sanitizer core was actually loaded from, once known.</summary>
     public static string? ResolvedPath { get; private set; }
 
     /// <summary>

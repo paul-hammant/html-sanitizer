@@ -20,7 +20,7 @@ import java.util.List;
  * <p>This class is the ONLY place in the Java binding that knows about the C
  * ABI. Everything above it ({@link HtmlSanitizer}) is idiomatic Java over
  * these handles. No sanitizer logic lives here or anywhere else in this
- * package — the engine is {@code core/htmlsanitizer.ae}, shared by every
+ * package — the sanitizer core is {@code core/htmlsanitizer.ae}, shared by every
  * language binding.
  *
  * <h2>Naming</h2>
@@ -71,7 +71,7 @@ public final class Native {
     private static final ValueLayout.OfInt I = ValueLayout.JAVA_INT;
     private static final java.lang.foreign.AddressLayout P = ValueLayout.ADDRESS;
 
-    /** The platform's shared-library file name for the engine. */
+    /** The platform's shared-library file name for the sanitizer core. */
     public static final String LIB_NAME = libName();
 
     private static String libName() {
@@ -84,7 +84,7 @@ public final class Native {
     // ---- callback descriptors ----
     //
     // Each hook receives the opaque user_data registered alongside it as its
-    // FIRST argument; the engine's C trampolines supply it. Integer arguments
+    // FIRST argument; the sanitizer core's C trampolines supply it. Integer arguments
     // are C `int` (JAVA_INT), not `long` — the doc block in core/embed.ae says
     // `long`, but core/_embed_support.c, which is what actually runs, uses
     // `int`. For the removing_* family a NON-ZERO return CANCELS the removal.
@@ -159,13 +159,13 @@ public final class Native {
     // ---- version / introspection ----
     public final MethodHandle abiVersion;
 
-    /** libc {@code malloc}, for the one hook that hands the engine a string it then owns. */
+    /** libc {@code malloc}, for the one hook that hands the sanitizer core a string it then owns. */
     private final MethodHandle malloc;
 
     private static volatile Native cached;
 
     /**
-     * Load the engine and bind every symbol, caching the result process-wide.
+     * Load the sanitizer core and bind every symbol, caching the result process-wide.
      *
      * <p>Resolution order, matching every other binding in the monorepo:
      * <ol>
@@ -247,7 +247,7 @@ public final class Native {
 
         abiVersion = downcall("aether_hs_embed_abi_version", FunctionDescriptor.of(I));
 
-        // The engine's C side frees filter_url's result with free(), so the
+        // The sanitizer core's C side frees filter_url's result with free(), so the
         // matching malloc must be libc's — a Java Arena allocation handed
         // over there would be freed by the wrong allocator.
         malloc = linker.downcallHandle(
@@ -285,14 +285,14 @@ public final class Native {
             }
         }
         throw new IllegalStateException(
-                "could not load the HtmlSanitizer engine (" + LIB_NAME + "). Set "
+                "could not load the HtmlSanitizer core (" + LIB_NAME + "). Set "
                         + "HTMLSANITIZER_LIB to its absolute path. Last error: "
                         + (last == null ? "no candidates" : last.getMessage()), last);
     }
 
     private MethodHandle downcall(String name, FunctionDescriptor fd) {
         MemorySegment sym = lookup.find(name).orElseThrow(
-                () -> new IllegalStateException("missing symbol " + name + " (engine too old?)"));
+                () -> new IllegalStateException("missing symbol " + name + " (sanitizer core too old?)"));
         return linker.downcallHandle(sym, fd);
     }
 
@@ -301,7 +301,7 @@ public final class Native {
     /**
      * Copy an ABI-returned string out and free it through the ABI.
      *
-     * <p>Every {@code char*} the engine returns is caller-owned; leaking it is
+     * <p>Every {@code char*} the sanitizer core returns is caller-owned; leaking it is
      * the single easiest mistake to make in any of these bindings.
      */
     public String takeString(MemorySegment ptr) {
@@ -321,7 +321,7 @@ public final class Native {
 
     /**
      * Read a borrowed {@code const char*} a callback was handed. NOT owned by
-     * us — the engine keeps it, so there is nothing to free.
+     * us — the sanitizer core keeps it, so there is nothing to free.
      */
     public static String readString(MemorySegment ptr) {
         if (ptr == null || ptr.equals(MemorySegment.NULL)) return "";
@@ -329,7 +329,7 @@ public final class Native {
     }
 
     /**
-     * Copy a Java string into a libc-{@code malloc}'d buffer the engine will
+     * Copy a Java string into a libc-{@code malloc}'d buffer the sanitizer core will
      * own and {@code free}. Used only by the {@code on_filter_url} hook.
      */
     public MemorySegment mallocString(String s) {

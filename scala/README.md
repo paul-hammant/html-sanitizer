@@ -4,7 +4,7 @@ Cleans HTML of constructs that can lead to XSS.
 
 This layer is **idiomatic sugar only**. It carries no sanitizer logic *and no
 FFI*: it compiles against the Java binding (`java/`, FFM / Panama) and reaches
-the pure-Aether engine in `core/htmlsanitizer.ae` through it, by ordinary JVM
+the pure-Aether sanitizer core in `core/htmlsanitizer.ae` through it, by ordinary JVM
 interop.
 
 That is deliberate. There is exactly **one** FFI per runtime in this monorepo,
@@ -54,7 +54,7 @@ caller then owns it and must `close()` it), and a one-shot:
 val clean = HtmlSanitizers.sanitize("""<div onclick="alert(1)">Hello</div>""")
 ```
 
-`HtmlSanitizer` is **not thread-safe** — the engine calls hooks re-entrantly
+`HtmlSanitizer` is **not thread-safe** — the sanitizer core calls hooks re-entrantly
 during `sanitize`.
 
 ## What Scala adds
@@ -75,7 +75,7 @@ Naming them honestly beats shipping a form that only looks like it works.
 
 **Allow-lists.** Six live views — `allowedTags`, `allowedAttributes`,
 `allowedCssProperties`, `allowedSchemes`, `allowedClasses`, `uriAttributes`.
-They are views on the engine, not copies:
+They are views on the sanitizer core, not copies:
 
 ```scala
 s.allowedTags += "my-widget"              // allow
@@ -117,7 +117,7 @@ node.nodeKind        // NodeKind.Document / Element / Text / Comment
 reason               // RemovalReason.NotAllowedTag, ...
 ```
 
-Both are sealed with an `Unknown(code)` case, so a newer engine adding a
+Both are sealed with an `Unknown(code)` case, so a newer sanitizer core adding a
 constant cannot make this layer throw — the ABI's constants are append-only, and
 a total match over a closed set would be a latent break.
 
@@ -185,7 +185,7 @@ report a pass.
 SCALA_JARS=/path/to/scala3-jars aeb scala/.tests.ae
 ```
 
-## Engine resolution
+## Sanitizer core resolution
 
 Inherited from the Java binding:
 

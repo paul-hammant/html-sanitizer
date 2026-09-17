@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# Idiomatic Ruby surface over the HtmlSanitizer engine.
+# Idiomatic Ruby surface over the HtmlSanitizer core.
 #
 # Carries no sanitizer logic — see the monorepo's one rule in LLM.md. Every
 # method here marshals to an `aether_hs_embed_*` call in `native.rb`.
@@ -89,7 +89,7 @@ module HtmlSanitizer
     end
   end
 
-  # Set-like view over one of the engine's six policy lists.
+  # Set-like view over one of the sanitizer core's six policy lists.
   class AllowList
     include Enumerable
 
@@ -180,7 +180,7 @@ module HtmlSanitizer
       @h = @lib.call("aether_hs_embed_new")
       raise "failed to create the native sanitizer" if Native.null?(@h)
 
-      # Fiddle closures must be kept alive for as long as the engine can call
+      # Fiddle closures must be kept alive for as long as the sanitizer core can call
       # them — a local trampoline would be GC'd and crash the process.
       @keepalive = []
 
@@ -313,7 +313,7 @@ module HtmlSanitizer
     # handler(node, raw_url, resolved_url) -> String
     #
     # Return the URL to use ("" drops the attribute). The returned string is
-    # copied into a C buffer the engine takes ownership of.
+    # copied into a C buffer the sanitizer core takes ownership of.
     def on_filter_url(handler = nil, &blk)
       install("aether_hs_embed_on_filter_url", handler || blk,
               Native::CB_FILTER_URL) do |fn|

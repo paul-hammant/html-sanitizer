@@ -1,10 +1,10 @@
 # frozen_string_literal: true
 
-# Fiddle bindings for the HtmlSanitizer engine (libhtmlsanitizer.so).
+# Fiddle bindings for the HtmlSanitizer core (libhtmlsanitizer.so).
 #
 # This file is the ONLY place in the Ruby binding that knows about the C ABI.
 # Everything above it (`sanitizer.rb`) is idiomatic Ruby over these symbols.
-# No sanitizer logic lives here or anywhere else in this gem — the engine is
+# No sanitizer logic lives here or anywhere else in this gem — the sanitizer core is
 # `core/htmlsanitizer.ae`, shared by every language binding.
 #
 # Library resolution, in order:
@@ -100,7 +100,7 @@ module HtmlSanitizer
     }.freeze
 
     # ---- callback prototypes ----
-    # Each takes an opaque user_data first; the engine's trampoline supplies it.
+    # Each takes an opaque user_data first; the sanitizer core's trampoline supplies it.
     CB_REMOVING_TAG       = [[P, P, I], I].freeze
     CB_REMOVING_ATTRIBUTE = [[P, P, P, I], I].freeze
     CB_REMOVING_STYLE     = [[P, P, P, P, I], I].freeze
@@ -108,7 +108,7 @@ module HtmlSanitizer
     CB_POST_PROCESS       = [[P, P], V].freeze
     CB_FILTER_URL         = [[P, P, P, P], P].freeze
 
-    # A loaded engine: the Fiddle::Handle plus a memoized Fiddle::Function per
+    # A loaded sanitizer core: the Fiddle::Handle plus a memoized Fiddle::Function per
     # exported symbol. `fn[:aether_hs_embed_sanitize].call(...)` is the whole
     # calling convention.
     class Lib
@@ -131,7 +131,7 @@ module HtmlSanitizer
 
       # Copy an ABI-returned string out and free it through the ABI.
       #
-      # Every char* the engine returns is caller-owned; leaking it is the
+      # Every char* the sanitizer core returns is caller-owned; leaking it is the
       # single easiest mistake to make in any of these bindings.
       def take_string(ptr)
         return "" if ptr.nil?
@@ -148,7 +148,7 @@ module HtmlSanitizer
     end
 
     class << self
-      # Load the engine .so, caching it process-wide. Returns a Lib.
+      # Load the sanitizer core .so, caching it process-wide. Returns a Lib.
       def load(path = nil)
         return @lib if @lib && path.nil?
 
@@ -164,7 +164,7 @@ module HtmlSanitizer
         end
         if lib.nil?
           raise Fiddle::DLError,
-                "could not load the HtmlSanitizer engine (#{LIB_NAME}). Set " \
+                "could not load the HtmlSanitizer core (#{LIB_NAME}). Set " \
                 "HTMLSANITIZER_LIB to its absolute path, or install a gem that " \
                 "bundles it. Last error: #{last}"
         end
@@ -187,7 +187,7 @@ module HtmlSanitizer
       end
 
       # Duplicate a Ruby string into a malloc'd C buffer the callee owns.
-      # Used by the filter_url hook, whose return value the engine frees.
+      # Used by the filter_url hook, whose return value the sanitizer core frees.
       def strdup(str)
         bytes = (str || "").to_s.dup.force_encoding(Encoding::BINARY)
         buf = Fiddle::Pointer.malloc(bytes.bytesize + 1, nil)

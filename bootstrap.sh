@@ -2,7 +2,7 @@
 # One-command casual-dev bootstrap for the html-sanitizer monorepo.
 #
 # Ensures the Aether toolchain (`ae`) and the build runner (`aeb`) are present,
-# then builds the native sanitizer engine and every binding whose language
+# then builds the native sanitizer core and every binding whose language
 # toolchain is actually installed on this box.
 #
 # The toolchains install via aeb's canonical remote installer, get.sh, which
@@ -11,7 +11,7 @@
 # builds to a user prefix, and runs no tests:
 #     aeb get.sh: https://raw.githubusercontent.com/aether-lang-dev/aeb/main/get.sh
 #
-# Installing the toolchain needs only `curl`. BUILDING THE ENGINE additionally
+# Installing the toolchain needs only `curl`. BUILDING THE sanitizer core additionally
 # needs a C compiler (Aether compiles to C) — checked below, before the build.
 #
 # Idempotent: a no-op for the toolchain when `ae`/`aeb` are already good.
@@ -60,18 +60,18 @@ else
     say "ae $(ae_version) + aeb ready"
 fi
 
-# ---- 2. Preflight for BUILDING the engine: a C compiler ----
+# ---- 2. Preflight for BUILDING the sanitizer core: a C compiler ----
 # Aether compiles to C and hands off to a C compiler. The toolchain install
 # above needs none, but core/.build.ae does. Check before the build so a
 # missing compiler fails clearly HERE, not cryptically inside `ae build`.
 command -v cc >/dev/null 2>&1 || command -v gcc >/dev/null 2>&1 || command -v clang >/dev/null 2>&1 \
-    || die "a C compiler (cc/gcc/clang) is required to build the engine — Aether compiles to C. Install e.g. build-essential (Debian/Ubuntu) or the Xcode Command Line Tools (macOS)."
+    || die "a C compiler (cc/gcc/clang) is required to build the sanitizer core — Aether compiles to C. Install e.g. build-essential (Debian/Ubuntu) or the Xcode Command Line Tools (macOS)."
 
 # ---- 3. Build ----
 cd "$HERE"
 case ":$PATH:" in *":$PREFIX/bin:"*) : ;; *) say "tip: add '$PREFIX/bin' to your shell PATH permanently";; esac
 
-# With explicit args, honor them verbatim. Otherwise build the engine (which
+# With explicit args, honor them verbatim. Otherwise build the sanitizer core (which
 # needs only `ae` + a C compiler, both ensured above) plus the leaves whose
 # toolchain is present. Each binding leaf also skips itself gracefully when its
 # toolchain is missing, so this sniff is belt-and-braces — it keeps the run

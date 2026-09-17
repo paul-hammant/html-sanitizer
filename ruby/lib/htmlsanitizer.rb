@@ -2,7 +2,7 @@
 
 # htmlsanitizer — clean HTML of XSS vectors.
 #
-# A thin Fiddle binding over ONE shared native engine
+# A thin Fiddle binding over ONE shared native sanitizer core
 # (core/native/libhtmlsanitizer.so, built from pure Aether). No sanitizer
 # logic lives in this gem; it only marshals values across the C ABI.
 #
@@ -34,7 +34,7 @@ module HtmlSanitizer
       new(native_lib: native_lib) { |s| s.sanitize_document(html, base_url) }
     end
 
-    # The engine's ABI revision.
+    # The sanitizer core's ABI revision.
     def abi_version
       new { |s| s.abi_version }
     end

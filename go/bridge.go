@@ -13,7 +13,7 @@ import (
 
 // The //export-ed functions below ARE the C trampolines named in bridge.h.
 // cgo emits a real C symbol for each, so `&C.hsgo_removing_tag` in
-// htmlsanitizer.go is a genuine function pointer the engine can call.
+// htmlsanitizer.go is a genuine function pointer the sanitizer core can call.
 //
 // Every one receives the ABI's opaque user_data first. What we put there is a
 // malloc'd cell holding a runtime/cgo.Handle token — never a Go pointer, which
@@ -103,7 +103,7 @@ func hsgo_filter_url(ud, elem unsafe.Pointer, raw, resolved *C.char) *C.char {
 		return resolved
 	}
 	out := s.onFilterURL(Node{lib: s.lib, ptr: elem}, goStr(raw), goStr(resolved))
-	// The engine takes ownership of what we return, so it must be a malloc'd
+	// The sanitizer core takes ownership of what we return, so it must be a malloc'd
 	// C buffer: C.CString allocates with malloc, which is exactly right.
 	return C.CString(out)
 }
@@ -118,7 +118,7 @@ func cbool(b bool) C.int {
 }
 
 // goStr copies a borrowed const char* callback argument into a Go string.
-// It does NOT free — these arguments are owned by the engine.
+// It does NOT free — these arguments are owned by the sanitizer core.
 func goStr(s *C.char) string {
 	if s == nil {
 		return ""

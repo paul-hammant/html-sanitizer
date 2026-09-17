@@ -80,8 +80,8 @@ HsAttribute >> value: aString [
 	 OWNERSHIP: the ABI stores the pointer we pass straight INTO the DOM
 	 (`at.value = value` in core/embed.ae) rather than copying it, so the
 	 buffer must outlive this call and must be freeable by libc. A
-	 libc-malloc'd copy is what the engine expects, and it is not freed here:
-	 the engine owns it once stored, the same contract as on_filter_url's
+	 libc-malloc'd copy is what the sanitizer core expects, and it is not freed here:
+	 the sanitizer core owns it once stored, the same contract as on_filter_url's
 	 return value."
 
 	self primSetValue: pointer to: (sanitizer mallocString: aString).

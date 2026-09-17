@@ -3,7 +3,7 @@ defmodule HtmlSanitizerTest do
   The binding conformance suite (docs/conformance.md).
 
   Proves the Elixir surface marshals every value shape across the FFI. It is
-  NOT a sanitizer test suite — the behavioural cases live in the engine's own
+  NOT a sanitizer test suite — the behavioural cases live in the sanitizer core's own
   tests and run once, in Aether.
 
   Checks 10 (`on_removing_tag` cancels) and 11 (`on_filter_url` rewrites) are
@@ -13,7 +13,7 @@ defmodule HtmlSanitizerTest do
   """
 
   # async: false — each test creates its own sanitizer, but they all share one
-  # NIF and one loaded engine, and a handle is not safe for concurrent use.
+  # NIF and one loaded sanitizer core, and a handle is not safe for concurrent use.
   use ExUnit.Case, async: false
 
   doctest HtmlSanitizer

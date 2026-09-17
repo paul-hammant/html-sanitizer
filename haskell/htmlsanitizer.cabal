@@ -3,7 +3,7 @@ name:               htmlsanitizer
 version:            0.1.0.0
 synopsis:           Clean HTML of constructs that can lead to XSS
 description:
-  A thin binding over the monorepo's ONE shared native engine
+  A thin binding over the monorepo's ONE shared native sanitizer core
   (@core/native/libhtmlsanitizer.so@, compiled from pure Aether). It contains
   no sanitizer logic: every function marshals to an @aether_hs_embed_*@ call
   across the C ABI described in @core/embed.ae@.
@@ -38,7 +38,7 @@ library
                   , bytestring >=0.10 && <0.13
   default-language: Haskell2010
 
-  -- We LINK the engine rather than dlopen it, so the shared library must exist
+  -- We LINK the sanitizer core rather than dlopen it, so the shared library must exist
   -- at BUILD time as well as run time. `.tests.ae` stages the artifact into
   -- haskell/native/ before invoking the compiler; the second directory is the
   -- in-tree location for a plain `cabal build` after `aeb core/.build.ae`.
@@ -46,7 +46,7 @@ library
                   , ../core/native
   extra-libraries:  htmlsanitizer
 
-  -- Bake both directories in as rpath so the produced binary finds the engine
+  -- Bake both directories in as rpath so the produced binary finds the sanitizer core
   -- without LD_LIBRARY_PATH, matching how the other LINKED bindings (go/) do
   -- it. These are relative rpaths, resolved against the process's working
   -- directory rather than the binary — good enough in-tree, which is where
@@ -67,7 +67,7 @@ test-suite conformance
                   , htmlsanitizer
   default-language: Haskell2010
 
-  -- The suite registers callbacks, so the engine calls back into Haskell from
+  -- The suite registers callbacks, so the sanitizer core calls back into Haskell from
   -- inside `sanitize`. `-threaded` is not required for that to be correct (the
   -- `safe` import handles the capability hand-off either way), but it is how a
   -- real consumer will run, so we test in that configuration.

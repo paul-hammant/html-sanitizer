@@ -1,6 +1,6 @@
 // The Java binding's classes, compiled once and shared by the whole JVM
 // family: kotlin/, scala/, clojure/ and groovy/ all layer over THESE classes
-// rather than binding the engine a second time.
+// rather than binding the sanitizer core a second time.
 //
 // Uses aeb's `java.javac` builder. `source_layout("maven idiomatic")` is
 // REQUIRED, not decorative: without it javac only globs *.java at the module

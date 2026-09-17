@@ -3,9 +3,9 @@
 Clean HTML of constructs that can lead to Cross-Site Scripting (XSS).
 
 This package is a **thin ext-ffi binding** over the monorepo's one shared
-native engine — `core/native/libhtmlsanitizer.so`, compiled from pure Aether.
+native sanitizer core — `core/native/libhtmlsanitizer.so`, compiled from pure Aether.
 It contains **no sanitizer logic**: every method marshals to an
-`aether_hs_embed_*` call. One engine, one set of behaviours, N language
+`aether_hs_embed_*` call. One sanitizer core, one set of behaviours, N language
 surfaces.
 
 | File | Role |
@@ -41,7 +41,7 @@ php -d ffi.enable=1 tests/conformance.php
 
 ## Building
 
-The engine is `dlopen`ed at run time, so nothing links against it — just build
+The sanitizer core is `dlopen`ed at run time, so nothing links against it — just build
 it first:
 
 ```sh
@@ -92,7 +92,7 @@ is better.
 
 ### Policy lists
 
-Six set-like views, each backed by the engine's own list — there is no PHP
+Six set-like views, each backed by the sanitizer core's own list — there is no PHP
 mirror to fall out of sync. Each is `Countable`, `IteratorAggregate` and
 `ArrayAccess`:
 
@@ -118,7 +118,7 @@ foreach ($s->allowedSchemes as $scheme) { /* ... */ }
 $s->allowedClasses->clear();
 ```
 
-`toArray()` enumerates in the engine's own (unspecified but stable) order;
+`toArray()` enumerates in the sanitizer core's own (unspecified but stable) order;
 `toSortedArray()` is the deterministic version.
 
 ### Flags
@@ -148,7 +148,7 @@ $s->onFilterUrl(fn (Node $e, string $raw, string $resolved) => $resolved);  // '
 ```
 
 `onFilterUrl` returns the URL to use. The string is duplicated into a buffer
-the **engine** takes ownership of — you do not free it.
+the **sanitizer core** takes ownership of — you do not free it.
 
 ### Node and Attribute
 
@@ -174,7 +174,7 @@ $attr->setValue('https://example.com/safe');   // rewrite in place
 ```
 
 `setValue` is safe with PHP's own transient buffer:
-`aether_hs_embed_attr_set_value` **copies** its argument engine-side.
+`aether_hs_embed_attr_set_value` **copies** its argument core-side.
 
 ## How the callback bridge works
 
@@ -188,11 +188,11 @@ signature, but now PHP can build the thunk.
 Two details are load-bearing:
 
 - **Keepalive.** Every registered `Closure` is stored on the sanitizer before
-  it is handed to the engine. PHP frees the generated thunk when the Closure
-  becomes unreachable, and the engine would then call into freed memory. The
+  it is handed to the sanitizer core. PHP frees the generated thunk when the Closure
+  becomes unreachable, and the sanitizer core would then call into freed memory. The
   list is cleared in `close()`, *after* `aether_hs_embed_free` has run — the
-  only point at which the engine is guaranteed never to invoke a hook again.
-- **Callback integers are `int`, not `long`.** The engine emits its closure
+  only point at which the sanitizer core is guaranteed never to invoke a hook again.
+- **Callback integers are `int`, not `long`.** The sanitizer core emits its closure
   calls as `int(*)(...)`; declaring `long` gives a 4-vs-8-byte mismatch on
   LP64 — garbage `reason` values and corrupted stack arguments. Conformance
   check 10 asserts the `reason` it receives is a real ABI constant, which is
@@ -204,15 +204,15 @@ A PHP closure already captures its handler, so the binding passes `null`.
 
 ## Memory
 
-Every `char*` the engine returns is caller-owned. `Native::takeString` copies
+Every `char*` the sanitizer core returns is caller-owned. `Native::takeString` copies
 it with `FFI::string` and frees it through `aether_hs_embed_free_string` in a
 `finally`; every string result in this package goes through that one function.
 Borrowed `const char*` **arguments** (the `name`/`value`/`raw`/`resolved`
 callback parameters) go through `Native::borrowString`, which does *not*
-free — the engine owns those.
+free — the sanitizer core owns those.
 
 `onFilterUrl`'s return is the one string travelling the other way. It is
-duplicated with **`hs_raw_dup`** — the engine's own `malloc`'d strdup from
+duplicated with **`hs_raw_dup`** — the sanitizer core's own `malloc`'d strdup from
 `core/_embed_support.c`, exported by the same `.so`. That avoids a second
 `FFI::cdef` against libc (whose module name and symbol differ per platform),
 and it is by construction the exact counterpart of the `free()` that will
@@ -248,8 +248,8 @@ keeps the binding testable on an air-gapped machine. Swapping in PHPUnit later
 is mechanical — each `check(...)` is one `public function test*`.
 
 ```sh
-aeb php/.tests.ae     # builds the engine, then runs the suite
-# or, with the engine already built:
+aeb php/.tests.ae     # builds the sanitizer core, then runs the suite
+# or, with the sanitizer core already built:
 HTMLSANITIZER_LIB=../core/native/libhtmlsanitizer.so \
     php -d ffi.enable=1 tests/conformance.php
 ```
@@ -261,7 +261,7 @@ for a missing toolchain.
 > **Status on this checkout:** PHP is **not installed** on the development box
 > these bindings were written on, so the PHP has been reviewed but not
 > executed here. `aeb php/.tests.ae` reports `php: SKIPPED` and exits 0. The
-> engine ABI it targets is proven by `core_tests/abi_smoke.c` and by the Dart,
+> sanitizer core ABI it targets is proven by `core_tests/abi_smoke.c` and by the Dart,
 > Lua, Python, Ruby, Go, Java, JavaScript and Rust bindings that do run — and
 > the `hs_raw_dup` ownership path this binding uses for `onFilterUrl` was
-> verified against the built engine with a standalone C harness.
+> verified against the built sanitizer core with a standalone C harness.

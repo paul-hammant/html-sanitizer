@@ -3,14 +3,14 @@
 Clean HTML of constructs that can lead to Cross-Site Scripting (XSS).
 
 This gem is a **thin Fiddle binding** over the monorepo's one shared native
-engine — `core/native/libhtmlsanitizer.so`, compiled from pure Aether. It
+sanitizer core — `core/native/libhtmlsanitizer.so`, compiled from pure Aether. It
 contains **no sanitizer logic**: every method marshals to an
-`aether_hs_embed_*` call. That is deliberate. One engine, one set of
+`aether_hs_embed_*` call. That is deliberate. One sanitizer core, one set of
 behaviours, N language surfaces.
 
 ## Install
 
-The gem needs the engine `.so` at runtime. In-tree:
+The gem needs the sanitizer core `.so` at runtime. In-tree:
 
 ```sh
 cd core && ae build --emit=lib embed.ae --extra _embed_support.c \
@@ -54,7 +54,7 @@ HtmlSanitizer.sanitize_document(html, "https://example.com/")
 
 ### Policy lists
 
-Six `Enumerable` set-like views, each backed by the engine's own list:
+Six `Enumerable` set-like views, each backed by the sanitizer core's own list:
 
 ```ruby
 s.allowed_tags
@@ -100,7 +100,7 @@ s.on_filter_url         { |elem, raw, resolved| resolved }   # "" drops the attr
 ```
 
 `on_filter_url` returns the URL to use. The returned String is copied into a C
-buffer the engine takes ownership of — you do not free it.
+buffer the sanitizer core takes ownership of — you do not free it.
 
 ### Node and Attribute
 
@@ -124,14 +124,14 @@ attr.value = "https://example.com/safe"   # rewrite in place
 
 ## Memory
 
-Every `char*` the engine returns is caller-owned. `Native::Lib#take_string`
+Every `char*` the sanitizer core returns is caller-owned. `Native::Lib#take_string`
 copies it into a Ruby String and frees it through
 `aether_hs_embed_free_string` in an `ensure` block — leaking that buffer is the
 single easiest mistake in any of these bindings, so all string reads go through
 that one method.
 
 Fiddle closures are held in the sanitizer's `@keepalive` array for as long as
-the handle lives. A closure the GC collects while the engine can still call it
+the handle lives. A closure the GC collects while the sanitizer core can still call it
 would crash the process.
 
 `#close` frees the native handle; using the sanitizer afterwards raises
@@ -145,8 +145,8 @@ string-returning `on_filter_url` — are both implemented and passing; this
 binding skips nothing.
 
 ```sh
-aeb ruby/.tests.ae          # builds the engine first, then runs rspec
-# or, with the engine already built:
+aeb ruby/.tests.ae          # builds the sanitizer core first, then runs rspec
+# or, with the sanitizer core already built:
 HTMLSANITIZER_LIB=../core/native/libhtmlsanitizer.so rspec
 ```
 

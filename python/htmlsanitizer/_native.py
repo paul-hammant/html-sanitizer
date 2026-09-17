@@ -1,9 +1,9 @@
-"""ctypes bindings for the HtmlSanitizer engine (libhtmlsanitizer.so).
+"""ctypes bindings for the HtmlSanitizer core (libhtmlsanitizer.so).
 
 This module is the ONLY place in the Python binding that knows about the C
 ABI. Everything above it (`_sanitizer.py`) is idiomatic Python over these
 symbols. No sanitizer logic lives here or anywhere else in this package —
-the engine is `core/htmlsanitizer.ae`, shared by every language binding.
+the sanitizer core is `core/htmlsanitizer.ae`, shared by every language binding.
 
 Library resolution, in order:
   1. an explicit path passed to `load(path)` / `HtmlSanitizer(native_lib=...)`
@@ -46,7 +46,7 @@ NODE_TEXT = 3
 NODE_COMMENT = 4
 
 # ---- callback prototypes ----
-# Each takes an opaque user_data first; the engine's trampoline supplies it.
+# Each takes an opaque user_data first; the sanitizer core's trampoline supplies it.
 CB_REMOVING_TAG = ctypes.CFUNCTYPE(
     ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int)
 CB_REMOVING_ATTRIBUTE = ctypes.CFUNCTYPE(
@@ -78,7 +78,7 @@ def _candidates(explicit=None):
 
 
 def load(path=None):
-    """Load the engine .so, caching it process-wide. Returns the CDLL."""
+    """Load the sanitizer core .so, caching it process-wide. Returns the CDLL."""
     global _lib
     if _lib is not None and path is None:
         return _lib
@@ -92,7 +92,7 @@ def load(path=None):
             last = exc
     else:
         raise OSError(
-            "could not load the HtmlSanitizer engine ({}). Set "
+            "could not load the HtmlSanitizer core ({}). Set "
             "HTMLSANITIZER_LIB to its absolute path, or install a wheel that "
             "bundles it. Last error: {}".format(_LIB_NAME, last))
 
@@ -158,7 +158,7 @@ def _declare(lib):
 def take_string(lib, ptr):
     """Copy an ABI-returned string out and free it through the ABI.
 
-    Every char* the engine returns is caller-owned; leaking it is the single
+    Every char* the sanitizer core returns is caller-owned; leaking it is the single
     easiest mistake to make in any of these bindings.
     """
     if not ptr:

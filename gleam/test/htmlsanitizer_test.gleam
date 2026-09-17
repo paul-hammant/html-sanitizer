@@ -1,7 +1,7 @@
 //// The binding conformance suite (docs/conformance.md).
 ////
 //// Proves the Gleam surface marshals every value shape across the FFI. It is
-//// NOT a sanitizer test suite — the behavioural cases live in the engine's own
+//// NOT a sanitizer test suite — the behavioural cases live in the sanitizer core's own
 //// tests and run once, in Aether.
 ////
 //// Checks 10 (`on_removing_tag` cancels) and 11 (`on_filter_url` rewrites) are

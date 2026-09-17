@@ -3,15 +3,15 @@
 Clean HTML of constructs that can lead to Cross-Site Scripting (XSS).
 
 This package is a **thin `importc` binding** over the monorepo's one shared
-native engine — `core/native/libhtmlsanitizer.so`, compiled from pure Aether.
+native sanitizer core — `core/native/libhtmlsanitizer.so`, compiled from pure Aether.
 It contains **no sanitizer logic**: every proc marshals to an
 `aether_hs_embed_*` call across the C ABI described in `core/embed.ae`. One
-engine, one set of behaviours, N language surfaces.
+sanitizer core, one set of behaviours, N language surfaces.
 
 ## Building
 
 Unlike the dlopen-based bindings (Python/ctypes, Ruby/Fiddle, PHP/FFI), this
-binding **links** the engine, so the shared library must exist at *build* time
+binding **links** the sanitizer core, so the shared library must exist at *build* time
 as well as run time. Build it first:
 
 ```sh
@@ -31,7 +31,7 @@ in-tree build needs no further setup and no `LD_LIBRARY_PATH`:
 The paths are derived from `currentSourcePath()`, so they are correct no
 matter which directory you invoke the compiler from.
 
-For a distributable build, copy the engine into `nim/native/` (which
+For a distributable build, copy the sanitizer core into `nim/native/` (which
 `.tests.ae` does automatically) so the rpath resolves without the monorepo
 layout around it.
 
@@ -72,7 +72,7 @@ echo sanitizeDocument(html, "https://example.com/")
 
 ### Policy lists
 
-Six set-like views, each backed by the engine's own list:
+Six set-like views, each backed by the sanitizer core's own list:
 
 ```nim
 s.allowedTags
@@ -89,12 +89,12 @@ s.allowedTags.add ["one", "two"]        # bulk
 s.allowedTags.excl "div"                # the deny direction
 "http" in s.allowedSchemes              # true
 s.allowedSchemes.len                    # 2
-s.allowedSchemes.items()                # engine order
+s.allowedSchemes.items()                # sanitizer core order
 s.allowedSchemes.sorted()               # @["http", "https"]
 s.allowedClasses.clear()                # start from nothing
 ```
 
-`items()` enumerates in the engine's own order (unspecified, but stable
+`items()` enumerates in the sanitizer core's own order (unspecified, but stable
 between mutations, so each item appears exactly once); `sorted()` is the
 deterministic version.
 
@@ -142,7 +142,7 @@ s.onFilterUrl(proc (elem: Node, raw, resolved: string): string =
 `onFilterUrl` returns the URL to use. Return `resolved` unchanged for "no
 rewrite" — the binding recognises that and hands the original pointer straight
 back, costing no allocation. Any other string is copied into a buffer the
-engine takes ownership of; **you do not free it**.
+sanitizer core takes ownership of; **you do not free it**.
 
 ### Node and Attribute
 
@@ -163,7 +163,7 @@ attr.value
 attr.value = "https://example.com/safe"   # rewrite in place
 ```
 
-`attr.value =` is safe to call with a transient Nim string: the engine copies
+`attr.value =` is safe to call with a transient Nim string: the sanitizer core copies
 the bytes rather than aliasing the host buffer.
 
 ## How the callback bridge works
@@ -181,16 +181,16 @@ not C function pointers.
 
 ### The GC keepalive requirement
 
-The engine holds that `user_data` pointer for as long as the hook is
+The sanitizer core holds that `user_data` pointer for as long as the hook is
 registered, but it is invisible to Nim's GC — nothing on the Nim side
 references the `Sanitizer` from the collector's point of view. If the last Nim
-reference went out of scope, the object would be freed and the engine left
+reference went out of scope, the object would be freed and the sanitizer core left
 holding a dangling pointer.
 
 So `newSanitizer` calls `GC_ref` on itself and `close` calls the matching
 `GC_unref`. That both keeps the object alive and pins its address, which
 matters for any GC that could otherwise move it. `close` frees the native
-handle *before* it unpins, so the engine cannot call back into an object that
+handle *before* it unpins, so the sanitizer core cannot call back into an object that
 is about to go away.
 
 **`close` deliberately does NOT clear the hooks first.** That looks like the
@@ -200,7 +200,7 @@ by hand goes through `swap_hook` in `core/embed.ae`, whose replace path never
 frees the outgoing box — so a clear-then-free leaks one 16-byte box *per hook*
 while a plain free leaks none. Measured with valgrind over 200 create/register/
 close cycles with three hooks: 16,000 bytes lost with the clear, 6,400 without
-it (the remainder is the engine's own per-`sanitize` leak, which every binding
+it (the remainder is the sanitizer core's own per-`sanitize` leak, which every binding
 shares). See "Known issues" in the repo README.
 
 Verified green under `--mm:orc`, `--mm:arc` and `--mm:refc`.
@@ -208,7 +208,7 @@ Verified green under `--mm:orc`, `--mm:arc` and `--mm:refc`.
 ### The `int`-not-`long` trap
 
 Nim's `int` is pointer-sized — on LP64 it is C `long`, not C `int`. The
-engine's codegen emits its closure calls as `int(*)(...)`, so a host declaring
+sanitizer core's codegen emits its closure calls as `int(*)(...)`, so a host declaring
 those parameters as Nim `int` gets a 4-vs-8-byte mismatch: garbage `reason`
 values and, on some ABIs, a corrupted argument register.
 
@@ -221,7 +221,7 @@ Getting that wrong is stack-argument corruption, not a compile error.
 
 ## Memory
 
-Every `cstring` the engine returns is caller-owned. Exactly one proc —
+Every `cstring` the sanitizer core returns is caller-owned. Exactly one proc —
 `takeString` — is allowed to touch a returned pointer, and it always copies
 into a Nim `string` and frees the original through
 `aether_hs_embed_free_string`. There is no other call to `free_string` in the
@@ -232,9 +232,9 @@ This matters more in Nim than it looks: assigning a `cstring` to a `string`
 a crash.
 
 The one place ownership flows the other way is `onFilterUrl`, which must hand
-the engine a malloc'd string it will later `free()`. That free comes from the
-engine's libc, so the malloc must too — a Nim-allocated buffer would be
-released by the wrong allocator. The binding calls the engine's own exported
+the sanitizer core a malloc'd string it will later `free()`. That free comes from the
+sanitizer core's libc, so the malloc must too — a Nim-allocated buffer would be
+released by the wrong allocator. The binding calls the sanitizer core's own exported
 `hs_raw_dup` rather than binding libc `malloc` separately.
 
 Strings with an interior NUL are **refused**, not truncated. Silently
@@ -263,10 +263,10 @@ closed-handle rejection, interior-NUL refusal, `sanitizeDocument`, and all six
 policy-list selectors.
 
 ```sh
-aeb nim/.tests.ae     # builds the engine, stages it into nim/native, runs the suite
+aeb nim/.tests.ae     # builds the sanitizer core, stages it into nim/native, runs the suite
 ```
 
-With the engine already built, the suite runs standalone — no nimble required:
+With the sanitizer core already built, the suite runs standalone — no nimble required:
 
 ```sh
 nim c -r tests/tconformance.nim

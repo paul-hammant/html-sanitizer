@@ -2,7 +2,7 @@
   "Idiomatic Clojure over the Java binding.
 
   There is **no second FFI here**. The one JVM binding to the shared Aether
-  engine is `java/src/main/java/org/htmlsanitizer` (FFM / Panama), and
+  sanitizer core is `java/src/main/java/org/htmlsanitizer` (FFM / Panama), and
   everything in this namespace is ordinary Clojure/Java interop on top of those
   classes. A Clojure-specific FFI would be a second copy of the ABI's
   marshalling and ownership rules to keep in step with `core/embed.ae`, and the
@@ -19,7 +19,7 @@
     * `node->map` / `attr->map` for pulling a **borrowed** DOM node into an
       immutable snapshot that is safe to keep.
 
-  Not thread-safe, for the same reason the Java class is not: the engine calls
+  Not thread-safe, for the same reason the Java class is not: the sanitizer core calls
   hooks re-entrantly during `sanitize`."
   ;; The handler interfaces are NESTED in HtmlSanitizer, so their binary names
   ;; are HtmlSanitizer$RemovingTagHandler and friends — that is the name
@@ -37,7 +37,7 @@
 ;; ---- ABI constants as keywords -------------------------------------------
 ;;
 ;; Maps rather than a case expression, and with an explicit fallback, because
-;; the ABI's constants are append-only: a newer engine may pass a code this
+;; the ABI's constants are append-only: a newer sanitizer core may pass a code this
 ;; build has never seen, and that must not blow up mid-sanitize.
 
 (def ^:private reason->kw
@@ -58,7 +58,7 @@
 
 (defn removal-reason
   "The ABI removal-reason code as a keyword, or `:unknown` for a code this
-  build does not know (a newer engine, not an error)."
+  build does not know (a newer sanitizer core, not an error)."
   [code]
   (get reason->kw code :unknown))
 
@@ -79,7 +79,7 @@
       (with-open [s (sanitizer)]
         (sanitize s \"<div onclick=\\\"evil()\\\">hi</div>\"))
 
-  `lib-path` is an explicit engine path; omit it for the usual
+  `lib-path` is an explicit sanitizer core path; omit it for the usual
   `$HTMLSANITIZER_LIB` / bundled / loader-path search."
   (^HtmlSanitizer [] (HtmlSanitizer.))
   (^HtmlSanitizer [lib-path] (HtmlSanitizer. lib-path)))
@@ -91,7 +91,7 @@
   (.close s))
 
 (defn abi-version
-  "The engine's ABI revision."
+  "The sanitizer core's ABI revision."
   [^HtmlSanitizer s]
   (.abiVersion s))
 
@@ -140,10 +140,10 @@
 ;; ---- allow-lists ---------------------------------------------------------
 
 (defn allow-list
-  "One of the engine's six live policy views, by keyword: `:tags`,
+  "One of the sanitizer core's six live policy views, by keyword: `:tags`,
   `:attributes`, `:css-properties`, `:schemes`, `:classes`, `:uri-attributes`.
 
-  The result is a live view on the engine, not a copy — mutating it changes
+  The result is a live view on the sanitizer core, not a copy — mutating it changes
   the policy immediately."
   ^AllowList [^HtmlSanitizer s which]
   (case which
@@ -180,7 +180,7 @@
   (.contains (allow-list s which) item))
 
 (defn allow-count
-  "How many entries the `which` list holds, straight from the engine."
+  "How many entries the `which` list holds, straight from the sanitizer core."
   [^HtmlSanitizer s which]
   (.size (allow-list s which)))
 

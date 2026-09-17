@@ -12,7 +12,7 @@ name = "htmlsanitizer"
 version = "0.1.0"
 target = "erlang"
 
-description = "Clean HTML of XSS constructs — Gleam surface over the shared Aether engine"
+description = "Clean HTML of XSS constructs — Gleam surface over the shared Aether sanitizer core"
 licences = ["MIT"]
 
 # `htmlsanitizer_nif` is deliberately NOT listed as a dependency: it is an OTP

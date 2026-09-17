@@ -1,4 +1,4 @@
-// C ABI conformance: a pure-C consumer that dlopens the engine .so and
+// C ABI conformance: a pure-C consumer that dlopens the sanitizer core .so and
 // drives every exported symbol — the caller-owned-string contract, the
 // allow-list mutation + enumeration paths, all six callback trampolines
 // (including the 4-arg style hook and the string-returning filter_url), and
@@ -6,7 +6,7 @@
 //
 // This is the gate that matters for the bindings. Every language binding is
 // marshalling over exactly these symbols, so if this passes, a binding
-// failure is a binding bug, not an engine one. Keep it in C with nothing but
+// failure is a binding bug, not a sanitizer core one. Keep it in C with nothing but
 // dlopen + dlsym: no language runtime can mask a problem here.
 
 import bldr

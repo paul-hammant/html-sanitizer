@@ -1,7 +1,7 @@
 # htmlsanitizer — Python binding
 
 Clean HTML of XSS vectors. A thin `ctypes` binding over the shared native
-engine (`libhtmlsanitizer.so`) that every language binding in this monorepo
+sanitizer core (`libhtmlsanitizer.so`) that every language binding in this monorepo
 uses, so behaviour is identical across languages by construction.
 
 ```python
@@ -14,13 +14,13 @@ s.sanitize('<div onclick="steal()">hi <script>alert(1)</script></div>')
 
 ## Install
 
-The wheel bundles the engine `.so`, so a plain install is enough:
+The wheel bundles the sanitizer core `.so`, so a plain install is enough:
 
 ```sh
 pip install htmlsanitizer
 ```
 
-## Finding the engine
+## Finding the sanitizer core
 
 Resolution order:
 
@@ -95,5 +95,5 @@ aeb python/.tests.ae          # from the repo root
 
 Mirrors `docs/conformance.md` — the twelve checks every binding implements —
 plus the remaining callback shapes. See the root README for the known
-per-`sanitize()` memory-growth caveat, which is engine-side and affects all
+per-`sanitize()` memory-growth caveat, which is core-side and affects all
 bindings equally.

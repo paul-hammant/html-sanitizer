@@ -1,6 +1,6 @@
 /* core/_embed_support.c — the irreducible C under the HtmlSanitizer C ABI.
  *
- * The sanitizer ENGINE is pure Aether (core/htmlsanitizer.ae). This file
+ * The sanitizer core is pure Aether (core/htmlsanitizer.ae). This file
  * carries only the two things Aether's stdlib cannot express, both of them
  * FFI plumbing rather than sanitizer logic. (A third — reading a std.set
  * items() snapshot — was here until ae 0.576 added set.items_size /
@@ -12,9 +12,9 @@
  *      std.mem is access-only (no allocation), and the bindings free returned
  *      pointers with C free(), so this cannot be Aether.
  *
- *   2. The CALLBACK TRAMPOLINES — hs_embed_cb_*(). The engine's hook slots
+ *   2. The CALLBACK TRAMPOLINES — hs_embed_cb_*(). The sanitizer core's hook slots
  *      (HtmlSanitizer.on_removing_tag, .on_filter_url, …) hold heap-boxed
- *      Aether closures, and the engine invokes them via `call(cb, ...)`, which
+ *      Aether closures, and the sanitizer core invokes them via `call(cb, ...)`, which
  *      lowers to `fn(env, args...)`. A foreign function pointer is NOT that
  *      shape, so a binding cannot drop its own callback into the slot. These
  *      builders malloc a box in the SAME layout codegen uses,
@@ -25,11 +25,11 @@
  *      (the `tag` is mandatory as of aether #1439 — see HS_CLOSURE_TAG below)
  *
  *      set .fn to a trampoline of the right arity, and hide the host's
- *      function pointer (plus an opaque user_data) in .env. When the engine
+ *      function pointer (plus an opaque user_data) in .env. When the sanitizer core
  *      calls the slot, the trampoline unpacks env and forwards to the host.
  *      That is what gives all 21 bindings real hook support over one ABI.
  *
- * Ownership of the boxes: the engine's `free()` heap.free()s each non-null
+ * Ownership of the boxes: the sanitizer core's `free()` heap.free()s each non-null
  * hook slot, which releases the box; the HsCb env is freed by embed.ae
  * calling hs_embed_cb_free_env() before it drops the sanitizer. See the
  * "callbacks" section of core/embed.ae.
@@ -45,7 +45,7 @@
  * string: builtins hand back a refcounted `AetherString*` whose first bytes
  * are a magic header, not content. aether_string_data() accepts either shape
  * and returns the real byte pointer; string_new() builds an AetherString the
- * engine can consume. Every string in or out of a callback goes through
+ * sanitizer core can consume. Every string in or out of a callback goes through
  * these — reading one raw is how you get mojibake. */
 const char* aether_string_data(const void* s);
 void* string_new(const char* cstr);
@@ -86,7 +86,7 @@ typedef struct { void* host_fn; void* user_data; } HsCb;
  * signature is the same argument list with `void* user_data` prepended. */
 
 /* on_removing_tag(node: ptr, reason: int) -> int
- * Engine call site: `call(cb, node, REASON_NOT_ALLOWED_TAG)`. Non-zero
+ * Sanitizer core call site: `call(cb, node, REASON_NOT_ALLOWED_TAG)`. Non-zero
  * return CANCELS the removal (keeps the tag). */
 static int hs_tramp_ptr_int_ret_int(void* env, void* elem, int reason) {
     HsCb* cb = (HsCb*)env;
@@ -95,7 +95,7 @@ static int hs_tramp_ptr_int_ret_int(void* env, void* elem, int reason) {
 }
 
 /* on_removing_attribute(elem: ptr, attr_ptr: ptr, reason: int) -> int
- * Engine call site: `call(cb, elem, attr_ptr, reason)`. `attr_ptr` is a
+ * Sanitizer core call site: `call(cb, elem, attr_ptr, reason)`. `attr_ptr` is a
  * *DomAttr. Non-zero return cancels the removal. */
 static int hs_tramp_ptr_ptr_int_ret_int(void* env, void* a, void* b, int reason) {
     HsCb* cb = (HsCb*)env;
@@ -104,7 +104,7 @@ static int hs_tramp_ptr_ptr_int_ret_int(void* env, void* a, void* b, int reason)
 }
 
 /* on_removing_style(elem: ptr, prop_name: string, prop_val: string, reason: int) -> int
- * Engine call site: `call(cb, elem, prop_name, prop_val, reason)` — FOUR
+ * Sanitizer core call site: `call(cb, elem, prop_name, prop_val, reason)` — FOUR
  * arguments, unlike the tag/attribute hooks. Non-zero cancels the removal. */
 static int hs_tramp_style(void* env, void* elem,
                           const char* prop_name, const char* prop_val, int reason) {
@@ -137,15 +137,15 @@ static int hs_tramp_ptr_ret_void(void* env, void* node) {
  *
  * String ownership across this hop: the host returns a malloc'd C string
  * (typically via aether_htmlsanitizer_embed_dup, or its own strdup). The
- * engine takes the returned pointer as an Aether `string`. We must NOT free
- * it here — the engine owns it downstream. A host returning NULL means "no
+ * sanitizer core takes the returned pointer as an Aether `string`. We must NOT free
+ * it here — the sanitizer core owns it downstream. A host returning NULL means "no
  * rewrite", which we translate to the resolved URL unchanged. */
 static const char* hs_tramp_filter_url(void* env, void* elem,
                                        const char* raw, const char* resolved) {
     HsCb* cb = (HsCb*)env;
     if (!cb || !cb->host_fn) return resolved;
-    /* In: unwrap the engine's AetherString* into plain C strings the host can
-     * read. Out: the host returns a plain malloc'd C string, but the engine
+    /* In: unwrap the sanitizer core's AetherString* into plain C strings the host can
+     * read. Out: the host returns a plain malloc'd C string, but the sanitizer core
      * assigns the result into an Aether `string` slot — so wrap it back into
      * an AetherString. The host's buffer is copied by string_new and freed
      * here, keeping the "host returns malloc'd, we take it" contract. */
@@ -163,7 +163,7 @@ static const char* hs_tramp_filter_url(void* env, void* elem,
 }
 
 /* Box builders. One per trampoline shape; embed.ae exposes a `kind`-switched
- * wrapper so the ABI stays small. Returns a malloc'd HsClosure the engine's
+ * wrapper so the ABI stays small. Returns a malloc'd HsClosure the sanitizer core's
  * heap.free() will release; the HsCb env is freed via hs_embed_cb_free_env. */
 static void* hs_box(void (*fn)(void), void* host_fn, void* user_data) {
     HsCb* env = (HsCb*)malloc(sizeof(HsCb));
@@ -201,7 +201,7 @@ void* hs_embed_cb_box(int kind, void* host_fn, void* user_data) {
     }
 }
 
-/* Free the env a box carries, WITHOUT freeing the box itself — the engine's
+/* Free the env a box carries, WITHOUT freeing the box itself — the sanitizer core's
  * heap.free() on the hook slot does that. Call this immediately before
  * dropping the sanitizer (embed.ae's free path). NULL-safe. */
 void hs_embed_cb_free_env(void* boxp) {
@@ -215,7 +215,7 @@ void hs_embed_cb_free_env(void* boxp) {
  *
  * The distinction matters and was a real leak. hs_embed_cb_free_env() alone
  * releases the env but leaves the two-word box, which is correct ONLY on the
- * teardown path, where the engine's own free() heap.free()s each hook slot
+ * teardown path, where the sanitizer core's own free() heap.free()s each hook slot
  * right after. When a hook is REPLACED or CLEARED, nothing else ever sees the
  * outgoing pointer, so the box leaked — which made defensively clearing hooks
  * before free strictly worse than leaving them installed (16 bytes per

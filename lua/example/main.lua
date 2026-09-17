@@ -1,4 +1,4 @@
--- A short tour of the Lua binding. Run it with the engine built:
+-- A short tour of the Lua binding. Run it with the sanitizer core built:
 --
 --   cd core && ae build --emit=lib embed.ae --extra _embed_support.c \
 --       -o native/libhtmlsanitizer.so
@@ -7,7 +7,7 @@
 
 local hs = require("htmlsanitizer")
 
-print(string.format("engine: %s (ABI v%d)", hs.engine_path(), hs.abi_version()))
+print(string.format("sanitizer core: %s (ABI v%d)", hs.engine_path(), hs.abi_version()))
 
 local s = hs.new()
 

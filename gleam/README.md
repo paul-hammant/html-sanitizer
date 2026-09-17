@@ -2,7 +2,7 @@
 
 Clean HTML of constructs that can lead to Cross-Site Scripting (XSS).
 
-This is a **thin Gleam surface** over the monorepo's one shared native engine —
+This is a **thin Gleam surface** over the monorepo's one shared native sanitizer core —
 `core/native/libhtmlsanitizer.so`, compiled from pure Aether. It contains **no
 sanitizer logic**: every function marshals to an `aether_hs_embed_*` call
 across the C ABI described in `core/embed.ae`.
@@ -15,14 +15,14 @@ already-compiled artifact. Every function here is an
 `@external(erlang, "htmlsanitizer_nif", ...)` binding onto the very same module
 the Erlang and Elixir bindings load.
 
-One engine, one NIF, three languages.
+One sanitizer core, one NIF, three languages.
 
 ## Erlang target only
 
 This package sets `target = "erlang"` in `gleam.toml`. The whole binding is a
 NIF, so it cannot compile to JavaScript. Stating the target makes that a clear
 manifest error rather than a confusing missing-module error at runtime. (The
-monorepo already has a JavaScript binding that talks to the same engine over
+monorepo already has a JavaScript binding that talks to the same sanitizer core over
 koffi, if that is what you need.)
 
 ## Building and testing
@@ -46,9 +46,9 @@ ERL_LIBS=../erlang/_build gleam test
 OTP app built outside Gleam and supplied on the code path. Listing it would
 send Gleam looking on hex.pm for a package that does not exist there.
 
-### Finding the engine
+### Finding the sanitizer core
 
-The NIF `dlopen`s the engine. Resolution order: `$HTMLSANITIZER_LIB`, then
+The NIF `dlopen`s the sanitizer core. Resolution order: `$HTMLSANITIZER_LIB`, then
 `priv/` beside the NIF, then the OS loader's search path.
 
 ## Usage
@@ -94,7 +94,7 @@ htmlsanitizer.sorted_items(s, Schemes)           // ["http", "https"]
 htmlsanitizer.clear(s, Schemes)                  // start from nothing
 ```
 
-`items` returns the engine's own order (unspecified but stable between
+`items` returns the sanitizer core's own order (unspecified but stable between
 mutations); `sorted_items` when you want determinism.
 
 ### Flags
@@ -122,7 +122,7 @@ mutable policy state. Use one per process, or serialise access behind one.
 > **Checks 10 and 11 are not implemented, by design.**
 >
 > Check 10 (`on_removing_tag` cancels a removal) and check 11
-> (`on_filter_url` rewrites a URL) require the engine to call a *host* function
+> (`on_filter_url` rewrites a URL) require the sanitizer core to call a *host* function
 > synchronously from inside `sanitize`. On the BEAM that would mean calling
 > back into the VM from a NIF and blocking the scheduler thread until a process
 > replied — `enif_send` is one-way, and there is no safe synchronous

@@ -1,13 +1,13 @@
 # HtmlSanitizer — monorepo
 
 Clean HTML documents and fragments of constructs that can lead to **cross-site
-scripting (XSS)**, across many languages — **one engine, many thin bindings,
+scripting (XSS)**, across many languages — **one sanitizer core, many thin bindings,
 one build**.
 
-The sanitizer engine is a single pure-Aether module in [`core/`](core/)
+The sanitizer core is a single pure-Aether module in [`core/`](core/)
 (`core/htmlsanitizer.ae` plus the `core/embed.ae` C ABI), built once here as a
 native shared library (`libhtmlsanitizer.so`). Each language binding is a thin
-FFI wrapper over that one engine, so they cannot drift from each other —
+FFI wrapper over that one sanitizer core, so they cannot drift from each other —
 identical sanitization across languages is a build-time guarantee, not a test
 target.
 
@@ -23,7 +23,7 @@ s.sanitize('<div onclick="steal()">hi <script>alert(1)</script></div>')
 # '<div>hi </div>'
 ```
 
-## Why one engine
+## Why one sanitizer core
 
 An HTML sanitizer is a security boundary. The usual polyglot approach —
 reimplement it per language — means every language gets its own subtly
@@ -40,7 +40,7 @@ the fix the moment it rebuilds.
 This project exists because of
 [**HtmlSanitizer**](https://github.com/mganss/HtmlSanitizer) by
 [**Michael Ganss**](https://github.com/mganss) and its contributors — the
-long-established C# library that this engine is a port of. Not a
+long-established C# library that this sanitizer core is a port of. Not a
 reimplementation from a spec: the allow-lists, the CSS and URL filtering
 rules, the callback surface and the removal semantics are all theirs.
 
@@ -59,8 +59,8 @@ HtmlSanitizer is MIT-licensed, and so is this. See
 
 ```
 html-sanitizer/
-  core/          # the engine + C ABI; builds libhtmlsanitizer.so once
-  core_tests/    # engine behaviour (Aether) + C ABI conformance (pure C)
+  core/          # the sanitizer core + C ABI; builds libhtmlsanitizer.so once
+  core_tests/    # sanitizer core behaviour (Aether) + C ABI conformance (pure C)
   python/        # ctypes              ruby/       # Fiddle
   go/            # cgo                 rust/       # libloading
   java/          # FFM / Panama        javascript/ # koffi (Node)
@@ -71,7 +71,7 @@ html-sanitizer/
   erlang/        # C NIF (canonical, shared across the BEAM)
   elixir/ gleam/ # share the Erlang NIF — no second .so
   kotlin/ scala/ clojure/ groovy/   # JVM family — thin layers over the Java classes
-  wasm/          # browser/DOM — recompiles the engine to wasm32 (not a .so consumer)
+  wasm/          # browser/DOM — recompiles the sanitizer core to wasm32 (not a .so consumer)
   docs/          # conformance suite, ABI reference
 ```
 
@@ -98,7 +98,7 @@ html-sanitizer/
 | Pharo | UnifiedFFI (Smalltalk) | [pharo/](pharo/README.md) |
 | Browser / DOM | WebAssembly (wasm32, ~62 KB) | [wasm/](wasm/README.md) |
 
-**JVM family.** Kotlin, Scala, Clojure and Groovy reach the engine through the
+**JVM family.** Kotlin, Scala, Clojure and Groovy reach the sanitizer core through the
 **Java binding's classes** via seamless JVM interop — there is *no second
 native FFI*. Each is a thin idiomatic layer with its own conformance suite.
 
@@ -110,7 +110,7 @@ native FFI*. Each is a thin idiomatic layer with its own conformance suite.
 | Groovy | `Closure` DSL | [groovy/](groovy/README.md) |
 
 **Browser.** `wasm/` is the one target that does not load the `.so` — a browser
-cannot `dlopen` one. It recompiles the *same* engine sources to wasm32, so
+cannot `dlopen` one. It recompiles the *same* sanitizer core sources to wasm32, so
 client-side sanitization is the same logic as the server's rather than a
 JavaScript reimplementation with its own distinct set of holes:
 
@@ -122,7 +122,7 @@ el.innerHTML = s.sanitize(untrustedHtml);
 
 ## Features
 
-Inherited from the engine, so identical in every binding:
+Inherited from the sanitizer core, so identical in every binding:
 
 - **Lenient HTML5 tokenizer + DOM parser** — handles malformed and half-open
   markup, void tags, comments, CDATA, and raw-text modes for `<script>` /
@@ -142,7 +142,7 @@ Inherited from the engine, so identical in every binding:
 ## Build and test
 
 The build runner is [**aeb**](https://github.com/aether-lang-dev/aeb); the
-engine is compiled by [**Aether**](https://github.com/aether-lang-dev/aether).
+sanitizer core is compiled by [**Aether**](https://github.com/aether-lang-dev/aether).
 
 ### Getting the toolchain (`ae` + `aeb`)
 
@@ -150,14 +150,14 @@ engine is compiled by [**Aether**](https://github.com/aether-lang-dev/aether).
 
 - **Installing `ae` + `aeb`** needs only `curl` — as of aeb v0.298 the toolchain
   installs binary-first, no compiler and no `make`.
-- **Building the engine** (`core/` → `libhtmlsanitizer.so`) needs a **C
-  compiler** (Aether compiles to C) plus `git`. Nothing else — the engine has no
+- **Building the sanitizer core** (`core/` → `libhtmlsanitizer.so`) needs a **C
+  compiler** (Aether compiles to C) plus `git`. Nothing else — the sanitizer core has no
   third-party C dependencies.
 
 **Recommended — `./bootstrap.sh`.** It installs a pinned `ae` then `aeb` into
 `~/.local` (no sudo; `PREFIX=` to override) using the pins in
 [`ci/versions.env`](ci/versions.env), preflights the C compiler, then builds the
-engine and every binding whose toolchain is present.
+sanitizer core and every binding whose toolchain is present.
 
 **Manual — one line.** aeb's `get.sh` ensures both tools (a pinned `ae` >=
 `AE_PIN`, then a pinned `aeb`) into `~/.local` (no sudo; `PREFIX=` to override):
@@ -187,16 +187,16 @@ weak-emit codegen (first in 0.677) and the `fs.make_temp_file` runtime symbols
 ### Running it
 
 ```sh
-./bootstrap.sh            # toolchain (if missing) + engine + present bindings
-aeb core/.build.ae        # build the engine .so
-aeb core_tests/.tests.ae  # engine behaviour (12 C# cases, in Aether)
+./bootstrap.sh            # toolchain (if missing) + sanitizer core + present bindings
+aeb core/.build.ae        # build the sanitizer core .so
+aeb core_tests/.tests.ae  # sanitizer core behaviour (12 C# cases, in Aether)
 aeb core_tests/.abi.ae    # C ABI conformance (pure C, dlopen only)
 aeb core_tests/.xss.ae    # XSS bypass-vector gate (47 evasion techniques)
 aeb python/.tests.ae      # one binding
 aeb .presubmit.ae         # everything
 ```
 
-Each binding's `.tests.ae` deps `core/.build.ae`, so the engine builds first
+Each binding's `.tests.ae` deps `core/.build.ae`, so the sanitizer core builds first
 and the binding is handed its path via `HTMLSANITIZER_LIB`. `aeb` exits non-zero
 when a leaf fails (≥ v0.287), so its status gates CI directly; per-node logs are
 in `target/.aeb/logs/<label>.log`.
@@ -214,7 +214,7 @@ spec. Pick the nearest one by FFI mechanism, copy its shape, bind the ABI in
 
 ## Security testing
 
-`core_tests/.xss.ae` runs 47 known XSS evasion techniques against the engine —
+`core_tests/.xss.ae` runs 47 known XSS evasion techniques against the sanitizer core —
 case variation, entity encoding (`&#106;avascript:`), CSS escape obfuscation,
 scheme padding, malformed markup, dangerous elements. A failure there is a live
 hole, so it is a separate, loudly-named gate rather than extra cases inside the
@@ -248,10 +248,10 @@ Two further bypasses were found by porting upstream's own test suite (see
 
 ## Known issues
 
-- **Per-`sanitize()` memory growth (~0.2–0.3 kB/call).** The engine frees the
+- **Per-`sanitize()` memory growth (~0.2–0.3 kB/call).** The sanitizer core frees the
   DOM, but Aether's `heap.free` on a `ptr` cannot decrement the refcounted
   `string` fields nested in heap-boxed structs, so those are not reclaimed.
-  It is engine-side and affects every binding equally — measured identically
+  It is core-side and affects every binding equally — measured identically
   from pure C and from the bindings. Long-lived processes sanitizing steadily
   will grow. (The separate per-*handle* leak, ~10 kB per `new()`, was fixed by
   releasing the default allow-list sequences in `populate_defaults`.)
@@ -261,10 +261,10 @@ Two further bypasses were found by porting upstream's own test suite (see
   clearing hooks before `free` *worse* than leaving them installed.
   `core/_embed_support.c` now exposes `hs_embed_cb_free_box` for the
   replace/clear path, distinct from the teardown-path `hs_embed_cb_free_env`
-  (where the engine's own `free()` releases the box). Verified from pure C via
+  (where the sanitizer core's own `free()` releases the box). Verified from pure C via
   `dlopen`, 200 cycles per mode: 0 bytes lost across register-once,
   replace-3x, and register-then-clear.
-- **`on_removing_css_class` is declared but never fired.** The engine
+- **`on_removing_css_class` is declared but never fired.** The sanitizer core
   populates and frees the hook slot but has no call site for it — a gap in the
   original C# port, not in the ABI. The ABI deliberately does not expose it
   rather than offer a hook that never runs.
@@ -275,7 +275,7 @@ Two further bypasses were found by porting upstream's own test suite (see
 2013-2016. [github.com/mganss/HtmlSanitizer](https://github.com/mganss/HtmlSanitizer),
 MIT. Two distinct debts, both substantial:
 
-- **The engine** — `core/htmlsanitizer.ae` is a port of their C# library. Its
+- **The sanitizer core** — `core/htmlsanitizer.ae` is a port of their C# library. Its
   default allow-lists (tags, attributes, CSS properties, schemes, URI
   attributes), its CSS and URL filtering behaviour, and its callback surface
   are derived from that work.

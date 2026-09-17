@@ -2,9 +2,9 @@
 //!
 //! This module is the ONLY place in the Rust binding that knows about the C
 //! ABI, and it is the canonical cross-binding reference: every symbol the
-//! engine exports appears here once, with the exact C signature, in the order
+//! sanitizer core exports appears here once, with the exact C signature, in the order
 //! `core/embed.ae` declares it. No sanitizer logic lives here or anywhere
-//! else in this crate — the engine is `core/htmlsanitizer.ae`.
+//! else in this crate — the sanitizer core is `core/htmlsanitizer.ae`.
 //!
 //! ## Naming
 //!
@@ -24,12 +24,12 @@
 //! ## Callback ABI
 //!
 //! Each hook receives the opaque `user_data` registered alongside it as its
-//! **first** argument; the engine's C trampolines (`core/_embed_support.c`)
+//! **first** argument; the sanitizer core's C trampolines (`core/_embed_support.c`)
 //! supply it. Integer arguments are C `int`, not `long`.
 //!
 //! For the `removing_*` family (tag, attribute, style, comment), a
 //! **non-zero return CANCELS the removal** — i.e. keeps the node. `filter_url`
-//! returns a malloc'd C string the engine takes ownership of, or the
+//! returns a malloc'd C string the sanitizer core takes ownership of, or the
 //! `resolved` pointer unchanged to mean "no rewrite".
 
 use std::ffi::{c_char, c_int, c_void, CStr, CString};
@@ -99,7 +99,7 @@ pub type CbPostProcess = unsafe extern "C" fn(*mut c_void, *mut c_void);
 
 /// `char* f(void* ud, void* elem, const char* raw, const char* resolved)`
 ///
-/// Returns a malloc'd C string the engine takes ownership of, or `resolved`
+/// Returns a malloc'd C string the sanitizer core takes ownership of, or `resolved`
 /// unchanged for "no rewrite".
 pub type CbFilterUrl = unsafe extern "C" fn(
     *mut c_void,
@@ -108,7 +108,7 @@ pub type CbFilterUrl = unsafe extern "C" fn(
     *const c_char,
 ) -> *mut c_char;
 
-/// The platform's shared-library file name for the engine.
+/// The platform's shared-library file name for the sanitizer core.
 pub const LIB_NAME: &str = if cfg!(target_os = "macos") {
     "libhtmlsanitizer.dylib"
 } else if cfg!(target_os = "windows") {
@@ -117,14 +117,14 @@ pub const LIB_NAME: &str = if cfg!(target_os = "macos") {
     "libhtmlsanitizer.so"
 };
 
-/// Errors from loading or calling the engine.
+/// Errors from loading or calling the sanitizer core.
 #[derive(Debug)]
 pub enum Error {
     /// The shared library could not be found or opened.
     Load(String),
     /// The library opened but an expected symbol was missing.
     Symbol(String),
-    /// The engine refused to allocate a sanitizer.
+    /// The sanitizer core refused to allocate a sanitizer.
     Alloc,
     /// The sanitizer handle has already been closed.
     Closed,
@@ -137,10 +137,10 @@ impl std::fmt::Display for Error {
         match self {
             Error::Load(m) => write!(
                 f,
-                "could not load the HtmlSanitizer engine ({LIB_NAME}). Set \
+                "could not load the HtmlSanitizer core ({LIB_NAME}). Set \
                  HTMLSANITIZER_LIB to its absolute path. Last error: {m}"
             ),
-            Error::Symbol(s) => write!(f, "missing symbol {s} (engine too old?)"),
+            Error::Symbol(s) => write!(f, "missing symbol {s} (sanitizer core too old?)"),
             Error::Alloc => write!(f, "failed to create the native sanitizer"),
             Error::Closed => write!(f, "sanitizer is closed"),
             Error::NulByte => write!(f, "string contains an interior NUL byte"),
@@ -223,7 +223,7 @@ macro_rules! sym {
 }
 
 impl Api {
-    /// Load the engine and resolve every symbol.
+    /// Load the sanitizer core and resolve every symbol.
     ///
     /// Resolution order, matching every other binding in the monorepo:
     ///   1. `explicit`, when given
@@ -338,15 +338,15 @@ pub fn to_c(s: &str) -> Result<CString, Error> {
     CString::new(s).map_err(|_| Error::NulByte)
 }
 
-/// `strdup` for the one hook that must hand the engine a malloc'd string it
+/// `strdup` for the one hook that must hand the sanitizer core a malloc'd string it
 /// will then own (`on_filter_url`).
 ///
-/// Allocated with libc `malloc` because the engine's C side frees it with
+/// Allocated with libc `malloc` because the sanitizer core's C side frees it with
 /// `free` — a Rust-allocated buffer would be freed by the wrong allocator.
 pub fn malloc_cstring(s: &str) -> *mut c_char {
     let bytes = s.as_bytes();
     // One extra byte for the NUL. Truncate at any interior NUL rather than
-    // fail: a callback has no way to report an error to the engine.
+    // fail: a callback has no way to report an error to the sanitizer core.
     let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
     let src = &bytes[..end];
     unsafe {
@@ -360,7 +360,7 @@ pub fn malloc_cstring(s: &str) -> *mut c_char {
     }
 }
 
-// The engine's C support code frees filter_url's result with free(), so the
+// The sanitizer core's C support code frees filter_url's result with free(), so the
 // matching malloc must come from the same libc. Declaring it directly keeps
 // the crate free of a `libc` dependency for one symbol.
 unsafe extern "C" {

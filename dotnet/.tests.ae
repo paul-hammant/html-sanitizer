@@ -1,5 +1,5 @@
 // .NET binding tests (P/Invoke). The resolver honors HTMLSANITIZER_LIB, which
-// we point at the shared engine artifact this node deps.
+// we point at the shared sanitizer core artifact this node deps.
 //
 // The conformance suite is a plain console runner (dotnet/test/Conformance.cs)
 // rather than an xunit/NUnit project, so it needs no NuGet restore and runs

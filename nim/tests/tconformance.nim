@@ -1,7 +1,7 @@
 ## The 12-check binding conformance suite (docs/conformance.md), in Nim.
 ##
 ## Proves this binding marshals every value shape across the FFI. It is NOT a
-## sanitizer test suite — the behavioural cases live in the engine's own tests
+## sanitizer test suite — the behavioural cases live in the sanitizer core's own tests
 ## and run once, in Aether (`core_tests/`).
 ##
 ## This binding skips nothing: Nim can hand C a real function pointer, so
@@ -12,7 +12,7 @@
 ##
 ##     nim c -r tests/tconformance.nim
 ##
-## The engine must be linkable: `nim/.tests.ae` stages it into `nim/native/`,
+## The sanitizer core must be linkable: `nim/.tests.ae` stages it into `nim/native/`,
 ## and an in-tree checkout also has `core/native/libhtmlsanitizer.so`. Both
 ## directories are baked into the binary as rpath by `src/htmlsanitizer.nim`.
 
@@ -94,7 +94,7 @@ suite "conformance":
 
   test "11 on_filter_url rewrites":
     # The hardest shape: the callback RETURNS a string whose ownership passes
-    # to the engine.
+    # to the sanitizer core.
     withSanitizer s:
       s.onFilterUrl(proc (elem: Node, raw, resolved: string): string =
         if resolved == "https://example.com/logo.png":
@@ -193,7 +193,7 @@ suite "callback shapes":
       check ("id", "two") in attrPairs
 
   test "attr value can be rewritten in place":
-    # hs_embed_attr_set_value COPIES engine-side, so a transient Nim buffer is
+    # hs_embed_attr_set_value COPIES core-side, so a transient Nim buffer is
     # safe to hand it.
     withSanitizer s:
       s.onPostProcessNode(proc (node: Node) =

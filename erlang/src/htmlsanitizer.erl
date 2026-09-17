@@ -1,6 +1,6 @@
 %%% htmlsanitizer — clean HTML of constructs that can lead to XSS.
 %%%
-%%% A thin Erlang binding over the monorepo's ONE shared native engine
+%%% A thin Erlang binding over the monorepo's ONE shared native sanitizer core
 %%% (core/native/libhtmlsanitizer.so, compiled from pure Aether). No sanitizer
 %%% logic lives here: every function marshals to an `aether_hs_embed_*` call
 %%% through htmlsanitizer_nif.
@@ -15,7 +15,7 @@
 %%% *_r ("result") variants keep the tuple where a caller wants to distinguish
 %%% a closed sanitizer from a legitimately empty result.
 %%%
-%%% NOTE ON CALLBACKS: this binding exposes NONE of the engine's hooks
+%%% NOTE ON CALLBACKS: this binding exposes NONE of the sanitizer core's hooks
 %%% (on_removing_tag, on_filter_url, …). See README.md — a NIF cannot safely
 %%% call back into the BEAM synchronously, so conformance checks 10 and 11 are
 %%% skipped rather than faked.
@@ -33,7 +33,7 @@
 -type sanitizer() :: htmlsanitizer_nif:sanitizer().
 -export_type([sanitizer/0, list_name/0]).
 
-%% The engine's six policy lists. These atoms map onto the ABI's integer
+%% The sanitizer core's six policy lists. These atoms map onto the ABI's integer
 %% selectors, which are append-only and must never be renumbered.
 -type list_name() :: tags
                    | attributes
@@ -46,7 +46,7 @@
 %% Lifecycle
 %%------------------------------------------------------------------
 
-%% Create a sanitizer with the engine's secure defaults populated.
+%% Create a sanitizer with the sanitizer core's secure defaults populated.
 -spec new() -> {ok, sanitizer()} | {error, term()}.
 new() -> htmlsanitizer_nif:new().
 
@@ -156,6 +156,6 @@ sorted_items(S, List) -> lists:sort(items(S, List)).
 %% Introspection
 %%------------------------------------------------------------------
 
-%% The engine's ABI revision.
+%% The sanitizer core's ABI revision.
 -spec abi_version() -> non_neg_integer().
 abi_version() -> htmlsanitizer_nif:abi_version().

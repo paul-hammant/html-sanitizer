@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the HtmlSanitizer engine to WebAssembly using `zig cc` — no Emscripten.
+# Build the HtmlSanitizer core to WebAssembly using `zig cc` — no Emscripten.
 #
 # vs build.sh (emcc):
 #   + no ~1GB emsdk; one ~50MB zig tarball cross-compiles to wasm32

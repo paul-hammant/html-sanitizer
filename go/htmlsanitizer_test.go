@@ -1,7 +1,7 @@
 // The 12-check binding conformance suite (docs/conformance.md).
 //
 // Proves the Go binding marshals every value shape across the FFI. It is NOT a
-// sanitizer test suite — the behavioural cases live in the engine's own tests
+// sanitizer test suite — the behavioural cases live in the sanitizer core's own tests
 // and run once, in Aether.
 package htmlsanitizer
 
@@ -321,7 +321,7 @@ func TestPackageLevelSanitize(t *testing.T) {
 	eq(t, "package-level Sanitize", out, "<div>a</div>")
 }
 
-// Callbacks fire on the engine's C stack via cgo.Handle. Running many
+// Callbacks fire on the sanitizer core's C stack via cgo.Handle. Running many
 // sanitizers with hooks installed catches a handle registry that leaks or
 // resolves to the wrong owner.
 func TestCallbacksResolveTheRightOwner(t *testing.T) {

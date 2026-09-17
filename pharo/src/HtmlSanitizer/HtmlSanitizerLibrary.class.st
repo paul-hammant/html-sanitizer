@@ -1,13 +1,13 @@
 "
-I am the FFI library handle for the shared HtmlSanitizer engine.
+I am the FFI library handle for the shared HtmlSanitizer core.
 
 I am the ONLY class in this package that knows where the shared library lives.
-Everything else reaches the engine through `HtmlSanitizer`, which sends its
+Everything else reaches the sanitizer core through `HtmlSanitizer`, which sends its
 FFI calls with `self ffiLibrary: HtmlSanitizerLibrary`.
 
-## The engine
+## The sanitizer core
 
-No sanitizer logic lives in this package. The engine — HTML5 tokenizer, DOM,
+No sanitizer logic lives in this package. The sanitizer core — HTML5 tokenizer, DOM,
 CSS parser, URL resolver, allow-lists — is the pure-Aether
 `core/htmlsanitizer.ae`, shared by every language binding in this monorepo and
 reached through the `aether_hs_embed_*` C ABI (`core/embed.ae`).
@@ -35,14 +35,14 @@ Class {
 
 { #category : 'accessing' }
 HtmlSanitizerLibrary class >> explicitPath [
-	"An explicit engine path, or nil to use the usual search."
+	"An explicit sanitizer core path, or nil to use the usual search."
 
 	^ ExplicitPath
 ]
 
 { #category : 'accessing' }
 HtmlSanitizerLibrary class >> explicitPath: aStringOrNil [
-	"Pin the engine to one path. Pass nil to go back to the usual search.
+	"Pin the sanitizer core to one path. Pass nil to go back to the usual search.
 	 Set this BEFORE the first FFI call: UnifiedFFI caches the resolved
 	 handle, so a later change does not move an already-bound session."
 
@@ -81,9 +81,9 @@ HtmlSanitizerLibrary >> win32ModuleName [
 
 { #category : 'private' }
 HtmlSanitizerLibrary >> resolvedPathFor: aFileName [
-	"The engine's path, by the monorepo's standard resolution order. Falls
+	"The sanitizer core's path, by the monorepo's standard resolution order. Falls
 	 back to the bare file name, which lets the OS loader search its own
-	 paths — so a system-installed engine still works."
+	 paths — so a system-installed sanitizer core still works."
 
 	| explicit env bundled |
 	explicit := self class explicitPath.

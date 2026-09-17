@@ -1,6 +1,6 @@
 """HtmlSanitizer — clean HTML of XSS vectors.
 
-A thin Python binding over one shared native engine (pure Aether), the same
+A thin Python binding over one shared native sanitizer core (pure Aether), the same
 artifact every other language binding in this monorepo uses. Cross-language
 behaviour is therefore identical by construction, not by test.
 

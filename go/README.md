@@ -3,15 +3,15 @@
 Clean HTML of constructs that can lead to Cross-Site Scripting (XSS).
 
 This package is a **thin cgo binding** over the monorepo's one shared native
-engine — `core/native/libhtmlsanitizer.so`, compiled from pure Aether. It
+sanitizer core — `core/native/libhtmlsanitizer.so`, compiled from pure Aether. It
 contains **no sanitizer logic**: every method marshals to an
-`aether_hs_embed_*` call. One engine, one set of behaviours, N language
+`aether_hs_embed_*` call. One sanitizer core, one set of behaviours, N language
 surfaces.
 
 ## Building
 
 Unlike the dlopen-based bindings (Python/ctypes, Ruby/Fiddle), cgo **links**
-the engine, so the shared library must exist at *build* time as well as run
+the sanitizer core, so the shared library must exist at *build* time as well as run
 time. Build it first:
 
 ```sh
@@ -28,7 +28,7 @@ in-tree `go build ./...` needs no further setup:
 -Wl,-rpath,${SRCDIR}/native -Wl,-rpath,${SRCDIR}/../core/native
 ```
 
-For a distributable build, copy the engine into `go/native/` (which
+For a distributable build, copy the sanitizer core into `go/native/` (which
 `.tests.ae` does automatically) so the rpath resolves without the monorepo
 layout around it.
 
@@ -62,7 +62,7 @@ that distinguished from a legitimately empty result — it returns `ErrClosed`.
 
 ### Policy lists
 
-Six set-like views, each backed by the engine's own list:
+Six set-like views, each backed by the sanitizer core's own list:
 
 ```go
 s.AllowedTags
@@ -82,7 +82,7 @@ s.AllowedSchemes.Sorted()           // []string{"http", "https"}
 s.AllowedClasses.Clear()
 ```
 
-`Items()` enumerates in the engine's own (unspecified but stable) order;
+`Items()` enumerates in the sanitizer core's own (unspecified but stable) order;
 `Sorted()` is the deterministic version.
 
 ### Flags
@@ -119,7 +119,7 @@ s.OnFilterURL(func(elem htmlsanitizer.Node, raw, resolved string) string {
 ```
 
 `OnFilterURL` returns the URL to use. The string is copied into a malloc'd C
-buffer the engine takes ownership of — you do not free it.
+buffer the sanitizer core takes ownership of — you do not free it.
 
 ### Node and Attribute
 
@@ -147,7 +147,7 @@ func. The binding therefore uses the standard pattern:
 
 - `bridge.h` declares seven plain C functions (`hsgo_removing_tag`, …).
 - `bridge.go` defines them as `//export`-ed Go functions, so cgo emits a real
-  C symbol for each. Those symbols are what get registered with the engine.
+  C symbol for each. Those symbols are what get registered with the sanitizer core.
 - Each trampoline receives the ABI's opaque `user_data` first. That pointer is
   a small **malloc'd cell holding a `runtime/cgo.Handle`** token — an integer
   registry key, never a pointer into the Go heap.
@@ -162,7 +162,7 @@ other bindings' keepalive list — and cleared by `Close`.
 
 ## Memory
 
-Every `char*` the engine returns is caller-owned. `takeString` copies it into
+Every `char*` the sanitizer core returns is caller-owned. `takeString` copies it into
 a Go string and frees it through `aether_hs_embed_free_string` in a `defer`;
 every string result in the package goes through that one function.
 
@@ -181,8 +181,8 @@ string-returning `OnFilterURL` — are both implemented and passing; this
 binding skips nothing.
 
 ```sh
-aeb go/.tests.ae     # builds the engine, stages it into go/native, runs go test
-# or, with the engine already built:
+aeb go/.tests.ae     # builds the sanitizer core, stages it into go/native, runs go test
+# or, with the sanitizer core already built:
 go test ./...
 go test -race ./...  # also exercises checkptr on the user_data cell
 ```

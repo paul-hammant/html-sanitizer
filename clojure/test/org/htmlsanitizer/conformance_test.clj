@@ -4,12 +4,12 @@
   Proves the **Clojure layer** marshals every value shape correctly. Since that
   layer sits on the Java binding rather than on its own FFI, what this suite
   really pins down is that the Clojure wrapping — `reify`d SAM callbacks,
-  keyword reasons, the live allow-list fns — reaches the same engine behaviour
+  keyword reasons, the live allow-list fns — reaches the same sanitizer core behaviour
   the Java and Python suites see. A `reify` that returned the wrong type, or an
   `allow!` that mutated a copy instead of the live view, would fail here and
   nowhere else.
 
-  It is NOT a sanitizer test suite — the behavioural cases live in the engine's
+  It is NOT a sanitizer test suite — the behavioural cases live in the sanitizer core's
   own tests and run once, in Aether.
 
   `clojure.test` rather than an external framework, so the run needs nothing but

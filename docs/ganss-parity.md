@@ -1,6 +1,6 @@
 # Parity with the C# HtmlSanitizer test suite
 
-This engine is a port of Michael Ganss's C#
+This sanitizer core is a port of Michael Ganss's C#
 [HtmlSanitizer](https://github.com/mganss/HtmlSanitizer). That project's test
 suite encodes a decade of XSS bypass reports, which makes it the most valuable
 thing we can borrow — far more so than its source.
@@ -97,7 +97,7 @@ independent of this suite).
 
 An earlier version of this doc (and the root README) said
 `DisallowCssPropertyValue` was "declared but never wired up". **That was
-wrong.** The engine wires it fully — `sanitize_css_style_attribute` consults
+wrong.** The sanitizer core wires it fully — `sanitize_css_style_attribute` consults
 `disallow_css_property_value_regex` and drops matching declarations. Verified:
 with `^rgba\(0.*` set, `color: rgba(0, 0, 0, 1)` is removed and
 `background-color: rgba(255, 255, 255, 1)` is kept, exactly as C# does.
@@ -105,7 +105,7 @@ with `^rgba\(0.*` set, `color: rgba(0, 0, 0, 1)` is removed and
 What is actually missing is a **C ABI setter** — there is no way to hand a
 compiled `std.regex` across the FFI, so the feature is reachable from Aether
 but not from any of the 23 bindings. That is a binding-surface gap, not an
-engine gap, and the distinction matters: the sanitizing logic is correct and
+sanitizer core gap, and the distinction matters: the sanitizing logic is correct and
 tested, it just cannot be configured from outside.
 
 The one ported test for it (`DisallowCssPropertyValueTest`) now runs, and

@@ -106,7 +106,7 @@ for (int i = 0; i < aether_hs_embed_removal_count(h); i++) {
 ```
 
 This is a **pull** API rather than only the `on_removing_*` callbacks on
-purpose: the WASM and BEAM bindings cannot hand the engine a function pointer
+purpose: the WASM and BEAM bindings cannot hand the sanitizer core a function pointer
 at all, and a caller who wants a summary rather than the ability to *cancel* a
 removal should not have to install a hook to get one. The callbacks remain the
 way to intervene; the report is the way to observe.
@@ -155,7 +155,7 @@ Pass a NULL `fn` to clear a hook. `user_data` is opaque and handed back as
 the **first argument** on every invocation — bindings use it to find the
 object or closure that owns the callback.
 
-**Widths are C `int`, not `long`.** Aether's codegen emits the engine's
+**Widths are C `int`, not `long`.** Aether's codegen emits the sanitizer core's
 closure calls as `int(*)(...)`; a host declaring `long` gets a 4-vs-8-byte
 mismatch on LP64, producing garbage `reason` values and corrupted stack
 arguments.
@@ -175,10 +175,10 @@ arguments.
   is kept.
 - `on_filter_url` returns the URL to use. Return the `resolved` pointer
   unchanged for "no rewrite", `""` to drop the attribute, or a **malloc'd**
-  string the engine takes ownership of. The engine exports `hs_raw_dup` (its
+  string the sanitizer core takes ownership of. The sanitizer core exports `hs_raw_dup` (its
   own strdup) so a binding need not bind libc separately.
 - **Keep your callback alive.** A garbage-collected trampoline that the
-  engine later calls will crash the process. Every binding here pins them for
+  sanitizer core later calls will crash the process. Every binding here pins them for
   the sanitizer's lifetime.
 
 ### Removal reasons
@@ -205,7 +205,7 @@ freed when `sanitize` returns. Do not retain them.
 
 ## What is deliberately not exposed
 
-- `on_removing_css_class` — the engine declares the slot but never calls it
+- `on_removing_css_class` — the sanitizer core declares the slot but never calls it
   (a gap in the original port). Exposing it would offer a hook that silently
   never fires.
 - `sanitize_dom` — takes and returns an Aether DOM pointer, which has no

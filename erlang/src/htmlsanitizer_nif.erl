@@ -37,7 +37,7 @@
 %%------------------------------------------------------------------
 
 %% Load the NIF, handing the C side our priv/ directory so it can find the
-%% bundled engine .so without guessing. The C load callback tries
+%% bundled sanitizer core .so without guessing. The C load callback tries
 %% $HTMLSANITIZER_LIB first, then priv/, then the OS loader path.
 init() ->
     PrivDir = priv_dir(),

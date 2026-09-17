@@ -4,7 +4,7 @@ Cleans HTML of constructs that can lead to XSS.
 
 This layer is **idiomatic sugar only**. It carries no sanitizer logic *and no
 FFI*: it compiles against the Java binding (`java/`, FFM / Panama) and reaches
-the pure-Aether engine in `core/htmlsanitizer.ae` through it, by ordinary JVM
+the pure-Aether sanitizer core in `core/htmlsanitizer.ae` through it, by ordinary JVM
 interop.
 
 That is deliberate. There is exactly **one** FFI per runtime in this monorepo,
@@ -40,7 +40,7 @@ htmlSanitizer {
 ```
 
 `HtmlSanitizer` is `AutoCloseable`, so `withCloseable` releases the native
-handle and the upcall stubs. It is **not thread-safe** — the engine calls hooks
+handle and the upcall stubs. It is **not thread-safe** — the sanitizer core calls hooks
 re-entrantly during `sanitize`.
 
 Shorthands for the one-expression cases:
@@ -56,8 +56,8 @@ def clean2 = HtmlSanitizers.sanitize('<div onclick="alert(1)">Hello</div>')
 ## The DSL
 
 Inside a `htmlSanitizer { }` block the delegate is a `SanitizerSpec`, so these
-verbs can be written bare. Everything mutates the live engine — nothing is
-buffered, so ordering in the block is the ordering the engine sees.
+verbs can be written bare. Everything mutates the live sanitizer core — nothing is
+buffered, so ordering in the block is the ordering the sanitizer core sees.
 
 **Flags**
 
@@ -192,7 +192,7 @@ Candidates:
 If none works, the script exits 77 and the aeb node reports a skip. It does not
 report a pass.
 
-## Engine resolution
+## Sanitizer core resolution
 
 Inherited from the Java binding:
 

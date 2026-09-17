@@ -1,4 +1,4 @@
-// The idiomatic C# surface over the HtmlSanitizer engine.
+// The idiomatic C# surface over the HtmlSanitizer core.
 //
 // Carries no sanitizer logic — every member here marshals to an
 // aether_hs_embed_* call in Native.cs.
@@ -32,7 +32,7 @@ public readonly struct Attribute
 
     /// <summary>
     /// Rewrite the value in place (e.g. to canonicalise a URL rather than
-    /// remove the attribute). The engine copies the string, so the transient
+    /// remove the attribute). The sanitizer core copies the string, so the transient
     /// buffer is safe.
     /// </summary>
     public void SetValue(string value) =>
@@ -110,8 +110,8 @@ public readonly struct Node
 }
 
 /// <summary>
-/// A set-like view over one of the engine's six policy lists. Every operation
-/// reads or writes the engine's own set — there is no managed mirror to fall
+/// A set-like view over one of the sanitizer core's six policy lists. Every operation
+/// reads or writes the sanitizer core's own set — there is no managed mirror to fall
 /// out of sync.
 /// </summary>
 public sealed class AllowList : IReadOnlyCollection<string>
@@ -231,7 +231,7 @@ public sealed class HtmlSanitizer : IDisposable
 {
     private IntPtr _handle;
 
-    // Registered delegates must be kept alive for as long as the engine can
+    // Registered delegates must be kept alive for as long as the sanitizer core can
     // call them. A local delegate would be collected — or its marshalling stub
     // freed — and the process would crash on the next callback. This list is
     // the .NET equivalent of ctypes' keepalive list, and is cleared only in
@@ -239,10 +239,10 @@ public sealed class HtmlSanitizer : IDisposable
     private readonly List<Delegate> _keepAlive = new();
 
     /// <summary>
-    /// Create a sanitizer with the engine's secure defaults populated.
+    /// Create a sanitizer with the sanitizer core's secure defaults populated.
     /// </summary>
     /// <param name="nativeLibraryPath">
-    /// An explicit engine path. Otherwise: $HTMLSANITIZER_LIB, then native/
+    /// An explicit sanitizer core path. Otherwise: $HTMLSANITIZER_LIB, then native/
     /// next to the assembly, then ../core/native/, then the OS loader.
     /// </param>
     public HtmlSanitizer(string? nativeLibraryPath = null)
@@ -275,28 +275,28 @@ public sealed class HtmlSanitizer : IDisposable
             throw new ObjectDisposedException(nameof(HtmlSanitizer));
     }
 
-    /// <summary>The engine's allowed tag names.</summary>
+    /// <summary>The sanitizer core's allowed tag names.</summary>
     public AllowList AllowedTags { get; }
 
-    /// <summary>The engine's allowed attribute names.</summary>
+    /// <summary>The sanitizer core's allowed attribute names.</summary>
     public AllowList AllowedAttributes { get; }
 
-    /// <summary>The engine's allowed CSS property names.</summary>
+    /// <summary>The sanitizer core's allowed CSS property names.</summary>
     public AllowList AllowedCssProperties { get; }
 
-    /// <summary>The engine's allowed URL schemes.</summary>
+    /// <summary>The sanitizer core's allowed URL schemes.</summary>
     public AllowList AllowedSchemes { get; }
 
-    /// <summary>The engine's allowed CSS class names.</summary>
+    /// <summary>The sanitizer core's allowed CSS class names.</summary>
     public AllowList AllowedClasses { get; }
 
-    /// <summary>Which attributes the engine treats as carrying a URL.</summary>
+    /// <summary>Which attributes the sanitizer core treats as carrying a URL.</summary>
     public AllowList UriAttributes { get; }
 
-    /// <summary>Where the engine was loaded from, once known.</summary>
+    /// <summary>Where the sanitizer core was loaded from, once known.</summary>
     public static string? NativeLibraryPath => Native.ResolvedPath;
 
-    /// <summary>The engine's ABI revision.</summary>
+    /// <summary>The sanitizer core's ABI revision.</summary>
     public static int AbiVersion
     {
         get
@@ -336,7 +336,7 @@ public sealed class HtmlSanitizer : IDisposable
         Native.Free(h);
         if (disposing)
         {
-            // Only now is it certain the engine can no longer invoke a hook.
+            // Only now is it certain the sanitizer core can no longer invoke a hook.
             _keepAlive.Clear();
         }
     }
@@ -379,7 +379,7 @@ public sealed class HtmlSanitizer : IDisposable
     /// <summary>
     /// Hand a trampoline (or null, to clear) to one of the ABI's seven
     /// <c>on_*</c> setters. The trampoline is added to the keepalive list
-    /// BEFORE it is registered, so there is no window in which the engine
+    /// BEFORE it is registered, so there is no window in which the sanitizer core
     /// holds a pointer to a collectable delegate.
     /// </summary>
     private HtmlSanitizer Register(
@@ -395,7 +395,7 @@ public sealed class HtmlSanitizer : IDisposable
 
         _keepAlive.Add(trampoline);
         // user_data is unused on the .NET side: the delegate already closes
-        // over the handler, so there is nothing to look up. The engine's
+        // over the handler, so there is nothing to look up. The sanitizer core's
         // trampoline still round-trips it.
         register(_handle, Marshal.GetFunctionPointerForDelegate(trampoline), IntPtr.Zero);
         return this;
@@ -457,7 +457,7 @@ public sealed class HtmlSanitizer : IDisposable
 
     /// <summary>
     /// Called for each URL-bearing attribute. The returned string is copied
-    /// into a malloc'd C buffer the engine takes ownership of — you do not
+    /// into a malloc'd C buffer the sanitizer core takes ownership of — you do not
     /// free it.
     /// </summary>
     public HtmlSanitizer OnFilterUrl(FilterUrlHandler? handler)
@@ -471,14 +471,14 @@ public sealed class HtmlSanitizer : IDisposable
 
     // ---- one-shots ----
 
-    /// <summary>Sanitize <paramref name="html"/> with the engine's defaults.</summary>
+    /// <summary>Sanitize <paramref name="html"/> with the sanitizer core's defaults.</summary>
     public static string SanitizeOnce(string html, string baseUrl = "")
     {
         using var s = new HtmlSanitizer();
         return s.Sanitize(html, baseUrl);
     }
 
-    /// <summary>Sanitize a full document with the engine's defaults.</summary>
+    /// <summary>Sanitize a full document with the sanitizer core's defaults.</summary>
     public static string SanitizeDocumentOnce(string html, string baseUrl = "")
     {
         using var s = new HtmlSanitizer();

@@ -6,9 +6,9 @@
 --
 -- This module is the ONLY place in the Haskell binding that knows about the C
 -- ABI. It mirrors @rust\/src\/native.rs@, which is the canonical cross-binding
--- reference: every symbol the engine exports appears here once, with the exact
+-- reference: every symbol the sanitizer core exports appears here once, with the exact
 -- C signature, in the order @core\/embed.ae@ declares it. No sanitizer logic
--- lives here or anywhere else in this package — the engine is
+-- lives here or anywhere else in this package — the sanitizer core is
 -- @core\/htmlsanitizer.ae@, compiled to @libhtmlsanitizer.so@.
 --
 -- == Naming
@@ -34,14 +34,14 @@
 -- == Callback ABI
 --
 -- Each hook receives the opaque @user_data@ registered alongside it as its
--- __first__ argument; the engine's C trampolines (@core\/_embed_support.c@)
+-- __first__ argument; the sanitizer core's C trampolines (@core\/_embed_support.c@)
 -- supply it. Integer arguments are C @int@ — 'CInt' — __not__ @long@. A host
 -- declaring the wrong width gets a 4-vs-8-byte mismatch on LP64: garbage
 -- @reason@ values and corrupted stack arguments.
 --
 -- For the @removing_*@ family (tag, attribute, style, comment), a __non-zero
 -- return CANCELS the removal__ — i.e. keeps the node. 'CbFilterUrl' returns a
--- malloc'd C string the engine takes ownership of, or the @resolved@ pointer
+-- malloc'd C string the sanitizer core takes ownership of, or the @resolved@ pointer
 -- unchanged to mean \"no rewrite\".
 --
 -- == @safe@ vs @unsafe@ imports
@@ -52,7 +52,7 @@
 -- a one-instruction accessor.
 --
 -- 'aether_hs_embed_sanitize' and 'aether_hs_embed_sanitize_document' are the
--- deliberate exceptions: they are imported __@safe@__, because the engine
+-- deliberate exceptions: they are imported __@safe@__, because the sanitizer core
 -- calls __back into Haskell__ from inside them via the registered hooks. A
 -- callback re-entering the RTS from an @unsafe@ foreign call is undefined
 -- behaviour — the calling capability was never released, so the returning
@@ -155,7 +155,7 @@ module HtmlSanitizer.Native
     -- * Version / introspection
   , aether_hs_embed_abi_version
 
-    -- * The engine's own strdup, for @filter_url@'s return value
+    -- * The sanitizer core's own strdup, for @filter_url@'s return value
   , hs_raw_dup
 
     -- * String marshalling helpers
@@ -174,7 +174,7 @@ import Foreign.Ptr (FunPtr, Ptr, nullPtr)
 -- Allow-list selectors
 -- ---------------------------------------------------------------------------
 
--- | Which of the engine's six policy lists a call operates on.
+-- | Which of the sanitizer core's six policy lists a call operates on.
 --
 -- The underlying integers are ABI constants — append only, never renumber:
 --
@@ -216,7 +216,7 @@ cUriAttributes = 5
 -- Removal reasons
 -- ---------------------------------------------------------------------------
 
--- | Why the engine is about to remove something, as handed to the
+-- | Why the sanitizer core is about to remove something, as handed to the
 -- @removing_*@ callbacks.
 data Reason
   = NotAllowedTag
@@ -229,7 +229,7 @@ data Reason
   | StyleAttributeEmpty
   | UnknownReason CInt
     -- ^ A reason this binding predates. The ABI is append-only, so a newer
-    -- engine can introduce one; surfacing the raw value beats crashing or
+    -- sanitizer core can introduce one; surfacing the raw value beats crashing or
     -- silently reporting the wrong reason.
   deriving (Eq, Show)
 
@@ -294,7 +294,7 @@ nodeComment = 4
 -- This binding does not actually use the @user_data@ slot to find its handler
 -- — a Haskell @FunPtr@ made by a @wrapper@ import already closes over
 -- everything the callback needs. We still declare the parameter, because the
--- engine's trampolines pass it unconditionally and a wrapper of the wrong
+-- sanitizer core's trampolines pass it unconditionally and a wrapper of the wrong
 -- arity would shift every subsequent argument. We register 'nullPtr' for it.
 
 -- | @int f(void* ud, void* node, int reason)@ — non-zero cancels the removal.
@@ -315,19 +315,19 @@ type CbPostProcess = Ptr () -> Ptr () -> IO ()
 
 -- | @char* f(void* ud, void* elem, const char* raw, const char* resolved)@
 --
--- Returns a malloc'd C string the engine takes ownership of, or the @resolved@
+-- Returns a malloc'd C string the sanitizer core takes ownership of, or the @resolved@
 -- pointer unchanged for \"no rewrite\".
 type CbFilterUrl = Ptr () -> Ptr () -> CString -> CString -> IO CString
 
 -- Wrapper imports. Each turns a Haskell closure into a real C function
--- pointer the engine can call.
+-- pointer the sanitizer core can call.
 --
 -- LIFETIME, and this is the classic Haskell FFI bug: the 'FunPtr' a wrapper
 -- returns is a heap-allocated stub that pins the closure. It is NOT tracked by
 -- the garbage collector on the C side, and it is NOT freed when the FunPtr
 -- value goes out of scope in Haskell — it leaks until 'freeHaskellFunPtr', and
 -- calling it AFTER that free is a jump into reclaimed memory. So a binding
--- must (a) retain every FunPtr it registers for as long as the engine can call
+-- must (a) retain every FunPtr it registers for as long as the sanitizer core can call
 -- it, and (b) free it exactly once, at close. "HtmlSanitizer" keeps them in an
 -- 'Data.IORef.IORef' on the sanitizer and frees them in @close@.
 foreign import ccall "wrapper"
@@ -366,7 +366,7 @@ foreign import ccall unsafe "aether_hs_embed_free_string"
 
 -- ---- the main entry points ----
 --
--- SAFE, not unsafe: the engine invokes the registered hooks from inside these
+-- SAFE, not unsafe: the sanitizer core invokes the registered hooks from inside these
 -- calls, so they re-enter the Haskell RTS. See the module header.
 
 foreign import ccall safe "aether_hs_embed_sanitize"
@@ -476,7 +476,7 @@ foreign import ccall unsafe "aether_hs_embed_attr_value"
 
 -- | Rewrite an attribute's value from inside a callback.
 --
--- The engine COPIES the buffer (@core\/embed.ae@ does @string.concat(\"\", value)@
+-- The sanitizer core COPIES the buffer (@core\/embed.ae@ does @string.concat(\"\", value)@
 -- precisely so a host's transient buffer is safe), so passing a 'withUtf8'
 -- pointer that dies at the end of the bracket is fine.
 foreign import ccall unsafe "aether_hs_embed_attr_set_value"
@@ -487,9 +487,9 @@ foreign import ccall unsafe "aether_hs_embed_attr_set_value"
 foreign import ccall unsafe "aether_hs_embed_abi_version"
   aether_hs_embed_abi_version :: IO CInt
 
--- ---- the engine's own strdup ----
+-- ---- the sanitizer core's own strdup ----
 
--- | @char* hs_raw_dup(const char* s)@ — the engine's @strdup@, from
+-- | @char* hs_raw_dup(const char* s)@ — the sanitizer core's @strdup@, from
 -- @core\/_embed_support.c@.
 --
 -- NOTE the name: this one is __not__ prefixed @aether_@, because it is plain C
@@ -497,14 +497,14 @@ foreign import ccall unsafe "aether_hs_embed_abi_version"
 --
 -- We use it, rather than 'Foreign.C.String.newCString' or a @malloc@ of our
 -- own, for exactly one purpose: producing @filter_url@'s return value. The
--- engine's @hs_tramp_filter_url@ does @string_new(out); free(out)@ — it frees
--- our buffer with the C library's @free@. Allocating it with the engine's own
+-- sanitizer core's @hs_tramp_filter_url@ does @string_new(out); free(out)@ — it frees
+-- our buffer with the C library's @free@. Allocating it with the sanitizer core's own
 -- @malloc@ guarantees the matching allocator. A GHC-allocated buffer freed by
 -- libc @free@ is undefined behaviour, and on a platform where the RTS and the
--- engine link different C runtimes (Windows most obviously) it is a hard
+-- sanitizer core link different C runtimes (Windows most obviously) it is a hard
 -- crash.
 --
--- The returned pointer is handed straight to the engine; we must NOT free it.
+-- The returned pointer is handed straight to the sanitizer core; we must NOT free it.
 foreign import ccall unsafe "hs_raw_dup"
   hs_raw_dup :: CString -> IO CString
 
@@ -515,13 +515,13 @@ foreign import ccall unsafe "hs_raw_dup"
 -- | Copy an ABI-returned string out and free it through the ABI.
 --
 -- __This is the only place a returned @CString@ is consumed.__ Rule 1 of the
--- ABI is that every @char*@ out of the engine is caller-owned; funnelling them
+-- ABI is that every @char*@ out of the sanitizer core is caller-owned; funnelling them
 -- all through one function is what makes that auditable. A null pointer (which
 -- the ABI does not currently produce, but which a failed @malloc@ inside
 -- @hs_raw_dup@ would) yields @\"\"@ rather than a segfault.
 --
 -- The result is a 'B.ByteString' of the raw UTF-8 bytes. This binding does not
--- decode to 'String'\/'Data.Text.Text': the engine speaks UTF-8 bytes, so
+-- decode to 'String'\/'Data.Text.Text': the sanitizer core speaks UTF-8 bytes, so
 -- handing bytes back is both lossless and dependency-free.
 takeString :: CString -> IO B.ByteString
 takeString p
@@ -529,13 +529,13 @@ takeString p
   | otherwise = do
       -- packCString COPIES up to the NUL, so the ByteString stays valid after
       -- the free below. (BU.unsafePackCString would alias the buffer we are
-      -- about to hand back to the engine — a use-after-free.)
+      -- about to hand back to the sanitizer core — a use-after-free.)
       bs <- B.packCString p
       aether_hs_embed_free_string p
       pure bs
 
 -- | Read a __borrowed__ @const char*@ that a callback was handed. NOT owned by
--- us: the engine frees it (or it points into the DOM), so this only copies.
+-- us: the sanitizer core frees it (or it points into the DOM), so this only copies.
 peekBorrowed :: CString -> IO B.ByteString
 peekBorrowed p
   | p == nullPtr = pure B.empty
@@ -558,6 +558,6 @@ withUtf8 = B.useAsCString
 -- | Copy a 'B.ByteString' into a buffer allocated by the __engine's__ @malloc@,
 -- for handing to @filter_url@. See 'hs_raw_dup' for why the allocator matters.
 --
--- The engine takes ownership of the result; do not free it.
+-- The sanitizer core takes ownership of the result; do not free it.
 dupUtf8 :: B.ByteString -> IO CString
 dupUtf8 bs = B.useAsCString bs hs_raw_dup

@@ -8,7 +8,7 @@ import scala.jdk.CollectionConverters._
  * Idiomatic Scala over the Java binding.
  *
  * There is '''no second FFI here'''. The one JVM binding to the shared Aether
- * engine is `java/src/main/java/org/htmlsanitizer` (FFM / Panama), and
+ * sanitizer core is `java/src/main/java/org/htmlsanitizer` (FFM / Panama), and
  * everything in this file is ordinary Scala/Java interop on top of those
  * classes. A Scala-specific FFI would be a second copy of the ABI's marshalling
  * and ownership rules to keep in step with `core/embed.ae`, and the first thing
@@ -31,7 +31,7 @@ import scala.jdk.CollectionConverters._
  * they would need `scala-collection-compat`, which is a dependency this layer
  * deliberately does not take.)
  *
- * Not thread-safe, for the same reason the Java class is not: the engine calls
+ * Not thread-safe, for the same reason the Java class is not: the sanitizer core calls
  * hooks re-entrantly during `sanitize`.
  */
 object HtmlSanitizers {
@@ -40,14 +40,14 @@ object HtmlSanitizers {
    * Create a sanitizer, hand it to `body`, and close it — whatever happens.
    *
    * The loan pattern rather than a returned resource, because the thing being
-   * managed is a native handle: leaking one leaks engine memory, and Scala has
+   * managed is a native handle: leaking one leaks sanitizer core memory, and Scala has
    * no `try-with-resources` to fall back on.
    *
    * Deliberately NOT called `using`: that is a keyword in Scala 3, where
    * `using()(body)` parses as a using-clause and fails to compile. `withSanitizer`
    * reads the same and works on both 2.13 and 3.
    *
-   * @param nativeLibPath an explicit engine path, or `None` for the usual
+   * @param nativeLibPath an explicit sanitizer core path, or `None` for the usual
    *                      `$HTMLSANITIZER_LIB` / bundled / loader-path search
    */
   def withSanitizer[A](nativeLibPath: Option[String] = None)(body: HtmlSanitizer => A): A = {
@@ -248,9 +248,9 @@ object HtmlSanitizers {
 }
 
 /**
- * Why the engine is about to remove something.
+ * Why the sanitizer core is about to remove something.
  *
- * A sealed ADT with an [[RemovalReason.Unknown]] fallback, so a newer engine
+ * A sealed ADT with an [[RemovalReason.Unknown]] fallback, so a newer sanitizer core
  * adding a reason cannot make this layer throw — the ABI's constants are
  * append-only, and a total match over a closed set would be a latent break.
  */
@@ -266,7 +266,7 @@ object RemovalReason {
   case object ClassAttributeEmpty extends RemovalReason(Native.REASON_CLASS_ATTRIBUTE_EMPTY)
   case object StyleAttributeEmpty extends RemovalReason(Native.REASON_STYLE_ATTRIBUTE_EMPTY)
 
-  /** An code this build does not know — a newer engine, not an error. */
+  /** An code this build does not know — a newer sanitizer core, not an error. */
   final case class Unknown(override val code: Int) extends RemovalReason(code)
 
   private val known: List[RemovalReason] = List(

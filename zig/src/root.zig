@@ -1,4 +1,4 @@
-//! htmlsanitizer — the Zig binding over the monorepo's one shared native engine.
+//! htmlsanitizer — the Zig binding over the monorepo's one shared native sanitizer core.
 //!
 //! Clean HTML of constructs that can lead to Cross-Site Scripting (XSS).
 //!
@@ -6,13 +6,13 @@
 //! resolution and CSS handling all live in `core/htmlsanitizer.ae` (pure
 //! Aether), exposed over the flat C ABI declared in `core/embed.ae`. This
 //! module marshals values across that boundary and nothing else. If a
-//! behaviour looks wrong, the bug is in the engine or in this marshalling —
+//! behaviour looks wrong, the bug is in the sanitizer core or in this marshalling —
 //! it is never a policy decision made here.
 //!
 //! ## Which family of binding is this?
 //!
 //! Like Go's cgo binding (and unlike Python/ctypes or Ruby/Fiddle), this one
-//! **links** the engine rather than `dlopen`ing it: the `extern "c"`
+//! **links** the sanitizer core rather than `dlopen`ing it: the `extern "c"`
 //! declarations below resolve at link time against `-lhtmlsanitizer`. That
 //! means the `.so` must exist when you *build*, not only when you run.
 //! `build.zig` handles the `-L` and the `rpath`; see the README.
@@ -27,7 +27,7 @@
 //! ## The three rules that matter
 //!
 //! **1. Every `[*c]u8` this ABI returns is CALLER-OWNED.** It came from
-//! `hs_raw_dup` (a plain `malloc`) inside the engine, and must go back
+//! `hs_raw_dup` (a plain `malloc`) inside the sanitizer core, and must go back
 //! through `aether_hs_embed_free_string`. Forgetting this is the single most
 //! common bug in a binding, so this file routes *every* returned string
 //! through exactly one helper, `takeString`, which copies into a caller
@@ -35,7 +35,7 @@
 //! acquired it. There is no second path. Grep for `free_string` — it appears
 //! once.
 //!
-//! **2. Callback integer arguments are C `int`, NOT `long`.** The engine's
+//! **2. Callback integer arguments are C `int`, NOT `long`.** The sanitizer core's
 //! codegen emits its closure calls as `int (*)(...)`, so a host declaring
 //! `c_long` gets a 4-vs-8-byte mismatch on LP64: garbage `reason` values and,
 //! worse, corrupted stack arguments after it. Every callback below uses
@@ -43,8 +43,8 @@
 //! declare — so it is asserted by the conformance tests, which check the
 //! `reason` value they receive rather than merely ignoring it.
 //!
-//! **3. A registered callback must outlive the engine's ability to call it.**
-//! The engine stores the raw function pointer and the raw `user_data` in a
+//! **3. A registered callback must outlive the sanitizer core's ability to call it.**
+//! The sanitizer core stores the raw function pointer and the raw `user_data` in a
 //! malloc'd box and calls them from inside `sanitize`. Zig's
 //! `callconv(.c)` functions are static code — they cannot move or be
 //! collected — so the *function* half is free. The `user_data` half is not:
@@ -52,7 +52,7 @@
 //! move or die while a hook is registered. That is why `Sanitizer` is heap
 //! allocated by `init` and handed back as a `*Sanitizer` rather than returned
 //! by value: a by-value return would let the caller stack-copy it, leaving
-//! the engine holding a pointer to a dead stack frame. See `Hooks`.
+//! the sanitizer core holding a pointer to a dead stack frame. See `Hooks`.
 //!
 //! ## Borrowed vs owned pointers
 //!
@@ -128,15 +128,15 @@ const c = struct {
     // ---- version / introspection ----
     extern "c" fn aether_hs_embed_abi_version() c_int;
 
-    // ---- the engine's own strdup ----
+    // ---- the sanitizer core's own strdup ----
     //
     // Not an `aether_hs_embed_*` export — it is the raw C helper in
     // core/_embed_support.c, exported unmangled because it is plain C. It is
-    // the clean way to produce `filterUrl`'s return value: the engine frees
+    // the clean way to produce `filterUrl`'s return value: the sanitizer core frees
     // that buffer with `free()`, so it must come from the *same* libc
     // `malloc`. Calling this rather than declaring `malloc` ourselves means
     // the allocation and the free provably come from one allocator, even in
-    // a build where the engine and the host link different libc runtimes.
+    // a build where the sanitizer core and the host link different libc runtimes.
     extern "c" fn hs_raw_dup(s: [*c]const u8) [*c]u8;
 };
 
@@ -157,8 +157,8 @@ pub const ListKind = enum(c_int) {
     uri_attributes = 5,
 };
 
-/// Why the engine is about to remove something, as handed to a `removing_*`
-/// hook. Non-exhaustive: the ABI is append-only, so a future engine may pass
+/// Why the sanitizer core is about to remove something, as handed to a `removing_*`
+/// hook. Non-exhaustive: the ABI is append-only, so a future sanitizer core may pass
 /// a reason this build has no name for, and that must not be illegal-value
 /// UB in a Zig enum.
 pub const Reason = enum(c_int) {
@@ -185,18 +185,18 @@ pub const NodeKind = enum(c_int) {
 };
 
 pub const Error = error{
-    /// The engine refused to allocate a sanitizer (`hs_embed_new` returned null).
+    /// The sanitizer core refused to allocate a sanitizer (`hs_embed_new` returned null).
     AllocFailed,
     /// A Zig string contained an interior NUL and cannot cross a C `char*`.
     /// Truncating silently would be a security bug in a *sanitizer* binding:
-    /// the engine would see less HTML than the caller believes it sanitized.
+    /// the sanitizer core would see less HTML than the caller believes it sanitized.
     InteriorNul,
     /// Out of memory copying an ABI string into Zig-owned storage.
     OutOfMemory,
 };
 
-/// The ABI revision this engine implements. Check it to fail fast against an
-/// engine older than the features you expect.
+/// The ABI revision this sanitizer core implements. Check it to fail fast against an
+/// sanitizer core older than the features you expect.
 pub fn abiVersion() i32 {
     return @intCast(c.aether_hs_embed_abi_version());
 }
@@ -245,7 +245,7 @@ const StackCStr = struct {
     fn init(allocator: std.mem.Allocator, s: []const u8) Error!StackCStr {
         // An interior NUL would silently truncate the string at the C
         // boundary. For a sanitizer that is not a cosmetic bug: the caller
-        // would believe it sanitized more than the engine ever saw.
+        // would believe it sanitized more than the sanitizer core ever saw.
         if (std.mem.indexOfScalar(u8, s, 0) != null) return Error.InteriorNul;
         var self = StackCStr{ .allocator = allocator };
         if (s.len + 1 <= self.buf.len) {
@@ -277,7 +277,7 @@ const StackCStr = struct {
 
 /// A borrowed DOM node, valid only inside the callback that received it.
 ///
-/// Non-owning: there is no `deinit`, because the engine frees the whole DOM
+/// Non-owning: there is no `deinit`, because the sanitizer core frees the whole DOM
 /// when `sanitize` returns. Retaining a `Node` past the callback is a
 /// use-after-free. The accessors that return strings need an allocator
 /// because the ABI hands back owned copies (rule 1) which we must re-own.
@@ -342,7 +342,7 @@ pub const Attribute = struct {
     /// remove the attribute.
     ///
     /// Safe to pass a transient buffer: `hs_embed_attr_set_value` COPIES
-    /// engine-side (`string.concat("", value)`), so nothing aliases our
+    /// core-side (`string.concat("", value)`), so nothing aliases our
     /// stack after this returns. That is a documented ABI guarantee, not an
     /// implementation detail we are relying on by accident.
     pub fn setValue(self: Attribute, allocator: std.mem.Allocator, v: []const u8) Error!void {
@@ -383,7 +383,7 @@ pub const Hooks = struct {
     /// The hardest shape: return the URL to use. `raw` and `resolved` are
     /// BORROWED. Return `resolved` unchanged for "no rewrite", `""` to drop
     /// the attribute, or any other slice to substitute it — the binding
-    /// copies it into an engine-owned buffer for you (see `trampFilterUrl`),
+    /// copies it into an core-owned buffer for you (see `trampFilterUrl`),
     /// so you never allocate for the return value and never free it.
     filter_url: ?*const fn (ctx: ?*anyopaque, elem: Node, raw: []const u8, resolved: []const u8) []const u8 = null,
 };
@@ -402,7 +402,7 @@ const RegisteredSlots = struct {
 
 // ---- the trampolines ----
 //
-// These are the actual C function pointers the engine stores. Each has the
+// These are the actual C function pointers the sanitizer core stores. Each has the
 // exact C signature from core/embed.ae, with `user_data` FIRST and every
 // integer a `c_int` — see rule 2 in the module doc. They unpack `ud` back
 // into the owning `*Sanitizer` and dispatch to the Zig-level `Hooks`.
@@ -442,7 +442,7 @@ fn trampRemovingStyle(
     const self = selfFrom(ud) orelse return 0;
     const f = self.hooks.removing_style orelse return 0;
     // Borrowed for the duration of this call only — the C trampoline in
-    // _embed_support.c unwrapped them out of the engine's AetherString, and
+    // _embed_support.c unwrapped them out of the sanitizer core's AetherString, and
     // they die with the DOM.
     return if (f(self.hooks.ctx, Node{ .ptr = elem }, borrowString(name), borrowString(value), @enumFromInt(reason))) 1 else 0;
 }
@@ -471,7 +471,7 @@ fn trampPostProcessDom(ud: ?*anyopaque, node: ?*anyopaque) callconv(.c) void {
 /// Ownership, precisely:
 ///   * `raw` / `resolved` in are BORROWED. Do not free them, do not retain
 ///     them.
-///   * The `char*` we return is TAKEN by the engine, which copies it into an
+///   * The `char*` we return is TAKEN by the sanitizer core, which copies it into an
 ///     Aether string and then `free()`s our buffer. So it must be a plain
 ///     libc-`malloc`'d block — a Zig-allocator block would be freed by the
 ///     wrong allocator, which is heap corruption, not a leak.
@@ -480,8 +480,8 @@ fn trampPostProcessDom(ud: ?*anyopaque, node: ?*anyopaque) callconv(.c) void {
 ///     avoid a needless copy. We take that fast path whenever the hook hands
 ///     back a slice that aliases `resolved`.
 ///
-/// We produce the malloc'd copy with the engine's own `hs_raw_dup` rather
-/// than declaring `malloc` ourselves. Same allocator as the engine's `free`,
+/// We produce the malloc'd copy with the sanitizer core's own `hs_raw_dup` rather
+/// than declaring `malloc` ourselves. Same allocator as the sanitizer core's `free`,
 /// by construction.
 fn trampFilterUrl(
     ud: ?*anyopaque,
@@ -504,10 +504,10 @@ fn trampFilterUrl(
         return @constCast(resolved);
     }
 
-    // Otherwise copy into an engine-allocated buffer. `hs_raw_dup` takes a
+    // Otherwise copy into an core-allocated buffer. `hs_raw_dup` takes a
     // NUL-terminated string, so we need one; a stack buffer covers every
     // realistic URL, and anything longer is worth an allocation. On failure
-    // there is no way to report an error to the engine mid-sanitize, so we
+    // there is no way to report an error to the sanitizer core mid-sanitize, so we
     // degrade to "no rewrite" rather than returning null (which the C side
     // would also treat as no-rewrite, but via a less obvious path).
     var stack: [2048]u8 = undefined;
@@ -526,12 +526,12 @@ fn trampFilterUrl(
 // Sanitizer
 // =========================================================================
 
-/// One configured sanitizer. Wraps the engine's opaque handle.
+/// One configured sanitizer. Wraps the sanitizer core's opaque handle.
 ///
 /// **Heap-allocated on purpose.** `init` returns a `*Sanitizer` rather than a
-/// `Sanitizer` because the address of this struct is what we hand the engine
+/// `Sanitizer` because the address of this struct is what we hand the sanitizer core
 /// as every hook's `user_data` (rule 3). A by-value return would let the
-/// caller copy it to a different address, and the engine would then call back
+/// caller copy it to a different address, and the sanitizer core would then call back
 /// into whatever used to be there.
 ///
 /// **Not safe for concurrent use** — the native handle carries mutable policy
@@ -539,20 +539,20 @@ fn trampFilterUrl(
 pub const Sanitizer = struct {
     handle: ?*anyopaque,
     allocator: std.mem.Allocator,
-    /// The registered hooks. The engine holds `&self` as `user_data` for each
+    /// The registered hooks. The sanitizer core holds `&self` as `user_data` for each
     /// registered slot, and reads this field from inside `sanitize`. It must
     /// stay put and stay valid for as long as any hook is registered — which
     /// is guaranteed by `Sanitizer` being heap-allocated and by `deinit`
     /// clearing every hook before freeing the handle.
     hooks: Hooks = .{},
 
-    /// Which slots are currently registered ENGINE-side. Mirrors `hooks`, but
-    /// tracks the engine's view rather than ours so `setHooks` can touch the
+    /// Which slots are currently registered core-side. Mirrors `hooks`, but
+    /// tracks the sanitizer core's view rather than ours so `setHooks` can touch the
     /// ABI only on an actual transition — see the note there about the
-    /// engine's replace-path box leak.
+    /// sanitizer core's replace-path box leak.
     registered: RegisteredSlots = .{},
 
-    /// Create a sanitizer with the engine's secure defaults populated
+    /// Create a sanitizer with the sanitizer core's secure defaults populated
     /// (allowed tags, attributes, CSS properties, schemes, URI attributes).
     pub fn init(allocator: std.mem.Allocator) Error!*Sanitizer {
         const h = c.aether_hs_embed_new() orelse return Error.AllocFailed;
@@ -574,15 +574,15 @@ pub const Sanitizer = struct {
             // Do NOT clear the hooks first.
             //
             // That is the obvious defensive move, and it is wrong here. The
-            // engine's `hs_embed_free` already unregisters and frees each
+            // sanitizer core's `hs_embed_free` already unregisters and frees each
             // installed hook box correctly — but clearing a hook *manually*
             // goes through `swap_hook`, whose replace path never frees the
             // outgoing box (see the note on `setHooks`). So a tidy-looking
             // clear-then-free leaks exactly one 16-byte box per hook, while
             // simply freeing the handle leaks nothing. Verified in pure C
-            // against the engine, with no binding involved.
+            // against the sanitizer core, with no binding involved.
             //
-            // There is no lifetime risk in leaving them installed: the engine
+            // There is no lifetime risk in leaving them installed: the sanitizer core
             // cannot call a hook after `hs_embed_free` returns, and we destroy
             // `self` only after that.
             c.aether_hs_embed_free(h);
@@ -595,7 +595,7 @@ pub const Sanitizer = struct {
 
     /// Clear every slot. Routed through `setHooks` so it takes the same
     /// change-tracking path — clearing an already-clear slot would otherwise
-    /// hit the engine's leaky replace path for no reason.
+    /// hit the sanitizer core's leaky replace path for no reason.
     fn clearHooks(self: *Sanitizer) void {
         self.setHooks(.{});
     }
@@ -609,7 +609,7 @@ pub const Sanitizer = struct {
         return self.call(c.aether_hs_embed_sanitize, html, base_url);
     }
 
-    /// Sanitize a full HTML document. Currently the same engine path as
+    /// Sanitize a full HTML document. Currently the same sanitizer core path as
     /// `sanitize`; kept distinct so the two-method surface does not drift.
     pub fn sanitizeDocument(self: *Sanitizer, html: []const u8, base_url: []const u8) Error![]u8 {
         return self.call(c.aether_hs_embed_sanitize_document, html, base_url);
@@ -689,7 +689,7 @@ pub const Sanitizer = struct {
     /// Enumerate a whole list. Caller frees both the slice and each string —
     /// `freeItems` does both.
     ///
-    /// Order is the engine's own (unspecified but stable between mutations).
+    /// Order is the sanitizer core's own (unspecified but stable between mutations).
     /// Sort it yourself if you need determinism; the conformance suite does.
     pub fn items(self: *Sanitizer, which: ListKind) Error![][]u8 {
         const n = self.count(which);
@@ -716,23 +716,23 @@ pub const Sanitizer = struct {
     ///
     /// Registration passes `self` as the ABI's `user_data`, which the
     /// trampolines unpack back into a `*Sanitizer`. A hook left null in
-    /// `hooks` is *cleared* engine-side rather than left dangling — otherwise
+    /// `hooks` is *cleared* core-side rather than left dangling — otherwise
     /// replacing a full hook set with a partial one would leave the old
     /// trampoline registered, and it would then read a null field and be
-    /// harmless-but-confusing. Clearing keeps engine state and Zig state in
+    /// harmless-but-confusing. Clearing keeps sanitizer core state and Zig state in
     /// exact correspondence.
     ///
     /// ## Why this only calls the ABI when a slot's state CHANGES
     ///
-    /// There is a confirmed leak in the engine: `swap_hook` in
+    /// There is a confirmed leak in the sanitizer core: `swap_hook` in
     /// `core/embed.ae` calls `hs_embed_cb_free_env(old)`, which frees the
-    /// box's `env` but deliberately not the box itself ("the engine's
+    /// box's `env` but deliberately not the box itself ("the sanitizer core's
     /// heap.free() on the hook slot does that") — and on the *replace* path
     /// nothing ever frees that old box. Every re-registration of an
     /// already-registered slot therefore leaks 16 bytes. It reproduces in
     /// pure C with no binding involved (see the README).
     ///
-    /// We cannot fix the engine from here, but we can decline to provoke it.
+    /// We cannot fix the sanitizer core from here, but we can decline to provoke it.
     /// The trampoline pointer for a given slot is a compile-time constant, so
     /// re-registering a slot that is already registered is a semantic no-op
     /// that buys nothing and leaks a box. Tracking which slots are live lets
@@ -744,7 +744,7 @@ pub const Sanitizer = struct {
         const h = self.handle;
         const ud: ?*anyopaque = @ptrCast(self);
 
-        // Set the Zig-side state FIRST. The engine reads `self.hooks` from
+        // Set the Zig-side state FIRST. The sanitizer core reads `self.hooks` from
         // inside the trampolines, so a slot that is about to be registered
         // must already have its function in place.
         self.hooks = hooks;

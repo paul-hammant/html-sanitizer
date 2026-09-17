@@ -1,10 +1,10 @@
 // Third-party-consumer PACKAGE stage for the Python binding.
 //
 // Builds the `htmlsanitizer` wheel exactly as a downstream user receives it
-// from PyPI: the freshly-built engine .so bundled INSIDE the wheel (via
+// from PyPI: the freshly-built sanitizer core .so bundled INSIDE the wheel (via
 // setup.py's package_data), using the idiomatic `python -m build`.
 //
-// Deps core/.build.ae for the engine .so; publishes the built wheel on the
+// Deps core/.build.ae for the sanitizer core .so; publishes the built wheel on the
 // "wheel_dir" artifact edge, which python/.example.ae consumes.
 import bldr
 import std.os
@@ -16,10 +16,10 @@ aeb(cap) {
         root = _get("root")
         pydir = "${root}/python"
     
-        // 1. Stage the engine .so into the package tree (what the wheel ships).
+        // 1. Stage the sanitizer core .so into the package tree (what the wheel ships).
         rc = os.system("mkdir -p \"${pydir}/htmlsanitizer/native\" && cp \"${lib}\" \"${pydir}/htmlsanitizer/native/libhtmlsanitizer.so\"")
         if rc != 0 {
-            println("python package: failed to stage the engine .so into htmlsanitizer/native/")
+            println("python package: failed to stage the sanitizer core .so into htmlsanitizer/native/")
             return 1
         }
     
@@ -36,7 +36,7 @@ aeb(cap) {
             return 1
         }
         publish_artifact("wheel_dir", "${pydir}/dist")
-        println("python package: PASS — wheel built with the engine .so bundled")
+        println("python package: PASS — wheel built with the sanitizer core .so bundled")
         return 0
     }
 }

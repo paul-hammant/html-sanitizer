@@ -9,7 +9,7 @@
 
   Note the dependency: this module depends on org.htmlsanitizer:htmlsanitizer
   (java/), and NOT on any FFI of its own. That is the whole design — one JVM
-  binding to the engine, four idiomatic layers over it.
+  binding to the sanitizer core, four idiomatic layers over it.
 -->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -25,7 +25,7 @@
   <description>
     Cleans HTML of constructs that can lead to XSS — an idiomatic Groovy DSL
     over the Java (FFM/Panama) binding of the shared Aether HtmlSanitizer
-    engine. No sanitizer logic and no FFI of its own.
+    sanitizer core. No sanitizer logic and no FFI of its own.
   </description>
 
   <properties>
@@ -43,7 +43,7 @@
       <artifactId>groovy</artifactId>
       <version>${groovy.version}</version>
     </dependency>
-    <!-- The one and only route to the engine. -->
+    <!-- The one and only route to the sanitizer core. -->
     <dependency>
       <groupId>org.htmlsanitizer</groupId>
       <artifactId>htmlsanitizer</artifactId>

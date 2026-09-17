@@ -1,5 +1,5 @@
 // PHP binding tests (ext-ffi). The loader honors HTMLSANITIZER_LIB, which we
-// point at the shared engine artifact this node deps.
+// point at the shared sanitizer core artifact this node deps.
 //
 // The conformance suite is a plain assertion runner (php/tests/conformance.php)
 // rather than a PHPUnit suite, so it needs no `composer install` and runs

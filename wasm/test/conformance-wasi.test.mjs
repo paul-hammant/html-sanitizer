@@ -1,7 +1,7 @@
 // The conformance suite, run against the ZIG-built wasm32-wasi module.
 //
 // Identical assertions to conformance.test.mjs (the Emscripten build) — same
-// engine, same ABI, so any divergence between the two backends is a bug in
+// sanitizer core, same ABI, so any divergence between the two backends is a bug in
 // one of the builds, not a difference in behaviour. Driven by the raw
 // WebAssembly API with no generated glue.
 //
@@ -94,7 +94,7 @@ test('protocol-relative URL resolved', () => {
                '<a href="https://evil.example/p">x</a>');
 });
 
-// ---- the engine's security fixes must be present in the wasm build too ----
+// ---- the sanitizer core's security fixes must be present in the wasm build too ----
 
 test('SECURITY javascript: blocked', () => {
   assert.equal(s.sanitize('<a href="javascript:alert(1)">x</a>'), '<a>x</a>');

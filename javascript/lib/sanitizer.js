@@ -1,6 +1,6 @@
 'use strict';
 /**
- * Idiomatic JavaScript surface over the HtmlSanitizer engine.
+ * Idiomatic JavaScript surface over the HtmlSanitizer core.
  *
  * Carries no sanitizer logic — see the monorepo's one rule. Every method here
  * marshals to an `aether_hs_embed_*` call in `native.js`.
@@ -13,7 +13,7 @@ const {
   TAGS, ATTRIBUTES, CSS_PROPERTIES, SCHEMES, CLASSES, URI_ATTRIBUTES,
 } = native;
 
-// libc's strdup, for the one hook that must hand the engine a malloc'd
+// libc's strdup, for the one hook that must hand the sanitizer core a malloc'd
 // string it will then own (on_filter_url). Loaded lazily so a host that
 // never installs that hook never needs libc resolved.
 let _strdup = null;
@@ -106,7 +106,7 @@ class Node {
   }
 }
 
-/** Set-like view over one of the engine's six policy lists. */
+/** Set-like view over one of the sanitizer core's six policy lists. */
 class AllowList {
   constructor(owner, which) {
     this._owner = owner;
@@ -178,7 +178,7 @@ class HtmlSanitizer {
     this._h = this._api.new();
     if (!this._h) throw new Error('failed to create the native sanitizer');
 
-    // Registered koffi callbacks must be kept alive for as long as the engine
+    // Registered koffi callbacks must be kept alive for as long as the sanitizer core
     // can call them — an unregistered trampoline would crash the process.
     // We also unregister them on close() so the slots are reclaimed.
     this._keepalive = [];
@@ -324,7 +324,7 @@ class HtmlSanitizer {
    * handler(node, rawUrl, resolvedUrl) -> string
    *
    * Return the URL to use ('' drops the attribute). The returned string is
-   * copied into a malloc'd C buffer the engine takes ownership of.
+   * copied into a malloc'd C buffer the sanitizer core takes ownership of.
    */
   onFilterUrl(handler) {
     return this._install(
@@ -337,7 +337,7 @@ class HtmlSanitizer {
 
 // Backstop for handles dropped without close(). Not a substitute for calling
 // close() — GC timing is not a resource-management strategy — but it keeps a
-// forgotten sanitizer from leaking the engine's whole DOM arena forever.
+// forgotten sanitizer from leaking the sanitizer core's whole DOM arena forever.
 HtmlSanitizer._registry = new FinalizationRegistry(({ api, h }) => {
   if (h) api.free(h);
 });

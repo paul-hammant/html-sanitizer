@@ -49,7 +49,7 @@ aeb(cap) {
 }
 ```
 
-The `build.dep`s give the compile+run classpath (java classes, and the engine
+The `build.dep`s give the compile+run classpath (java classes, and the sanitizer core
 `.so` the java binding dlopens); the SDK puts the verified groovy jar,
 `test-classes/`, and the dep classpath on the run classpath automatically.
 
@@ -58,7 +58,7 @@ The `build.dep`s give the compile+run classpath (java classes, and the engine
 `run-tests.sh` does three things the SDK path must still cover — confirm each on
 a machine WITH a capable toolchain before removing the script:
 
-1. **The `HTMLSANITIZER_LIB` env var** the java binding reads to find the engine
+1. **The `HTMLSANITIZER_LIB` env var** the java binding reads to find the sanitizer core
    `.so`. The SDK doesn't set app-specific env; if the java-binding dep artifact
    doesn't already export the `.so` location onto the runner's environment,
    thread it via a `jvm_flag("-Dhtmlsanitizer.lib=...")` or an env the runner

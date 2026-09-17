@@ -17,14 +17,14 @@ import java.lang.invoke.MethodType;
  * }
  * }</pre>
  *
- * <p>This class carries <b>no sanitizer logic</b>. The engine — HTML5
+ * <p>This class carries <b>no sanitizer logic</b>. The sanitizer core — HTML5
  * tokenizer, DOM, CSS parser, URL resolver, allow-lists — is the pure-Aether
  * {@code core/htmlsanitizer.ae}, shared by every language binding in this
  * monorepo. Everything here marshals to an {@code aether_hs_embed_*} call in
  * {@link Native}.
  *
  * <p>Instances are {@link AutoCloseable}; {@link #close()} releases the native
- * handle and the upcall stubs. Not thread-safe: the engine calls hooks
+ * handle and the upcall stubs. Not thread-safe: the sanitizer core calls hooks
  * re-entrantly during {@code sanitize}.
  *
  * <p>Requires {@code --enable-native-access=ALL-UNNAMED} on the command line.
@@ -37,7 +37,7 @@ public final class HtmlSanitizer implements AutoCloseable {
     /**
      * Upcall stubs and any other native memory tied to this sanitizer's
      * lifetime. Closed in {@link #close()}, never before: an upcall stub that
-     * is freed while the engine can still call it crashes the VM.
+     * is freed while the sanitizer core can still call it crashes the VM.
      */
     private final Arena callbackArena = Arena.ofShared();
 
@@ -96,13 +96,13 @@ public final class HtmlSanitizer implements AutoCloseable {
 
     // ---- lifecycle ----
 
-    /** Load the engine and create a sanitizer with the secure defaults. */
+    /** Load the sanitizer core and create a sanitizer with the secure defaults. */
     public HtmlSanitizer() {
         this(null);
     }
 
     /**
-     * As {@link #HtmlSanitizer()}, but loading the engine from an explicit
+     * As {@link #HtmlSanitizer()}, but loading the sanitizer core from an explicit
      * path instead of the usual {@code $HTMLSANITIZER_LIB} / bundled /
      * loader-path search.
      */
@@ -128,7 +128,7 @@ public final class HtmlSanitizer implements AutoCloseable {
     public void close() {
         if (handle != null) {
             try {
-                // Frees the engine's callback boxes too, so no upcall stub can
+                // Frees the sanitizer core's callback boxes too, so no upcall stub can
                 // fire after this — which is what makes closing the arena
                 // immediately afterwards safe.
                 api.free.invokeExact(handle);
@@ -154,7 +154,7 @@ public final class HtmlSanitizer implements AutoCloseable {
         return handle;
     }
 
-    /** The engine's ABI revision. */
+    /** The sanitizer core's ABI revision. */
     public int abiVersion() {
         try {
             return (int) api.abiVersion.invokeExact();
@@ -407,7 +407,7 @@ public final class HtmlSanitizer implements AutoCloseable {
         if (h == null) return resolved;
         String out = h.onFilterUrl(new Node(api, elem), Native.readString(raw),
                 Native.readString(resolved));
-        // The engine takes ownership of this buffer and frees it with libc free.
+        // The sanitizer core takes ownership of this buffer and frees it with libc free.
         return api.mallocString(out);
     }
 }

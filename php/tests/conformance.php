@@ -4,7 +4,7 @@
  * The 12-check binding conformance suite (docs/conformance.md).
  *
  * Proves the PHP binding marshals every value shape across the FFI. It is NOT
- * a sanitizer test suite — the behavioural cases live in the engine's own
+ * a sanitizer test suite — the behavioural cases live in the sanitizer core's own
  * tests and run once, in Aether.
  *
  * ## Why a plain runner and not PHPUnit
@@ -54,7 +54,7 @@ $failures = [];
 
 /**
  * Run one check. The sanitizer is created and closed around $body, so each
- * check starts from the engine's defaults.
+ * check starts from the sanitizer core's defaults.
  */
 function check(string $name, callable $body): void
 {
@@ -123,7 +123,7 @@ if (!extension_loaded('ffi')) {
     exit(2);
 }
 $probe = new HtmlSanitizer();
-printf("engine: %s (ABI v%d)\n", $probe->nativeLibraryPath() ?? '(unknown)', $probe->abiVersion());
+printf("sanitizer core: %s (ABI v%d)\n", $probe->nativeLibraryPath() ?? '(unknown)', $probe->abiVersion());
 $probe->close();
 
 // ---- the twelve ----

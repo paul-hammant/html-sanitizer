@@ -44,7 +44,7 @@ case System.get_env("HTMLSANITIZER_BEAM_APP") do
 end
 
 # Load the NIF module now rather than at first use, so a load failure is
-# reported here — with the engine path in the message — instead of surfacing as
+# reported here — with the sanitizer core path in the message — instead of surfacing as
 # a confusing :nif_error deep inside a test.
 case Code.ensure_loaded(:htmlsanitizer_nif) do
   {:module, _} ->
@@ -54,7 +54,7 @@ case Code.ensure_loaded(:htmlsanitizer_nif) do
     IO.puts(:stderr, """
     html_sanitizer: could not load :htmlsanitizer_nif (#{inspect(reason)}).
 
-    The NIF dlopens the engine; set $HTMLSANITIZER_LIB to the absolute path of
+    The NIF dlopens the sanitizer core; set $HTMLSANITIZER_LIB to the absolute path of
     libhtmlsanitizer.so if it is not beside the NIF in priv/.
     """)
 

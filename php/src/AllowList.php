@@ -11,9 +11,9 @@ use LogicException;
 use Traversable;
 
 /**
- * A set-like view over one of the engine's six policy lists.
+ * A set-like view over one of the sanitizer core's six policy lists.
  *
- * Every operation reads or writes the engine's own set — there is no PHP
+ * Every operation reads or writes the sanitizer core's own set — there is no PHP
  * mirror to fall out of sync.
  *
  * @implements IteratorAggregate<int, string>
@@ -71,7 +71,7 @@ final class AllowList implements Countable, IteratorAggregate, ArrayAccess
     }
 
     /**
-     * The items, in the engine's own (unspecified but stable) order.
+     * The items, in the sanitizer core's own (unspecified but stable) order.
      *
      * @return list<string>
      */

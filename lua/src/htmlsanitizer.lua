@@ -1,9 +1,9 @@
 --- Clean HTML of constructs that can lead to Cross-Site Scripting (XSS).
 ---
---- The idiomatic Lua surface over the HtmlSanitizer engine. Carries no
+--- The idiomatic Lua surface over the HtmlSanitizer core. Carries no
 --- sanitizer logic — every function here marshals to the C extension in
 --- `htmlsanitizer_native` (lua/src/htmlsanitizer.c), which in turn calls the
---- `aether_hs_embed_*` ABI. One engine, one set of behaviours, N language
+--- `aether_hs_embed_*` ABI. One sanitizer core, one set of behaviours, N language
 --- surfaces.
 ---
 ---     local hs = require("htmlsanitizer")
@@ -26,7 +26,7 @@ M.SCHEMES        = native.SCHEMES
 M.CLASSES        = native.CLASSES
 M.URI_ATTRIBUTES = native.URI_ATTRIBUTES
 
---- Why the engine is about to remove something.
+--- Why the sanitizer core is about to remove something.
 M.REASON_NOT_ALLOWED_TAG       = native.REASON_NOT_ALLOWED_TAG
 M.REASON_NOT_ALLOWED_ATTRIBUTE = native.REASON_NOT_ALLOWED_ATTRIBUTE
 M.REASON_NOT_ALLOWED_STYLE     = native.REASON_NOT_ALLOWED_STYLE
@@ -44,8 +44,8 @@ M.NODE_COMMENT  = native.NODE_COMMENT
 
 -- ---- the allow-list view ----
 
---- A set-like view over one of the engine's six policy lists. Every operation
---- reads or writes the engine's own set — there is no Lua mirror to fall out
+--- A set-like view over one of the sanitizer core's six policy lists. Every operation
+--- reads or writes the sanitizer core's own set — there is no Lua mirror to fall out
 --- of sync.
 local AllowList = {}
 AllowList.__index = AllowList
@@ -96,7 +96,7 @@ function AllowList:at(index)
   return self._s._native:item_at(self._which, index)
 end
 
---- The items, as a table, in the engine's own (unspecified but stable) order.
+--- The items, as a table, in the sanitizer core's own (unspecified but stable) order.
 function AllowList:items()
   local out = {}
   for i = 1, self:count() do
@@ -158,7 +158,7 @@ end
 local Sanitizer = {}
 Sanitizer.__index = Sanitizer
 
---- Create a sanitizer with the engine's secure defaults populated.
+--- Create a sanitizer with the sanitizer core's secure defaults populated.
 ---
 --- `native_lib` optionally overrides the library search, which otherwise is:
 --- $HTMLSANITIZER_LIB, then `native/` and `../core/native/`, then the OS
@@ -229,7 +229,7 @@ function Sanitizer:get_allow_data_attributes()
   return self._native:get_allow_data_attributes()
 end
 
---- The engine's ABI revision.
+--- The sanitizer core's ABI revision.
 function Sanitizer:abi_version()
   return native.abi_version()
 end
@@ -241,7 +241,7 @@ end
 -- from your handler CANCELS the removal (keeps the node/attribute/property).
 --
 -- Handlers are anchored in the Lua registry by the C extension for as long as
--- the engine can call them, so a local function passed here is safe from
+-- the sanitizer core can call them, so a local function passed here is safe from
 -- collection.
 
 --- `handler(node, reason)` — return true to KEEP the tag.
@@ -283,7 +283,7 @@ end
 --- `handler(elem, raw, resolved) -> string` — return the URL to use;
 --- `resolved` unchanged for no rewrite, `""` to drop the attribute.
 ---
---- The returned string is copied into a malloc'd C buffer the engine takes
+--- The returned string is copied into a malloc'd C buffer the sanitizer core takes
 --- ownership of; you do not free it.
 function Sanitizer:on_filter_url(handler)
   self._native:on_filter_url(handler)
@@ -292,22 +292,22 @@ end
 
 -- ---- introspection / one-shots ----
 
---- The engine's ABI revision, without needing a sanitizer.
+--- The sanitizer core's ABI revision, without needing a sanitizer.
 function M.abi_version()
   return native.abi_version()
 end
 
---- Where the engine `.so` was actually loaded from.
+--- Where the sanitizer core `.so` was actually loaded from.
 function M.engine_path()
   return native.engine_path()
 end
 
---- One-shot: sanitize `html` with the engine's defaults.
+--- One-shot: sanitize `html` with the sanitizer core's defaults.
 function M.sanitize(html, base_url)
   return M.use(function(s) return s:sanitize(html, base_url) end)
 end
 
---- One-shot: sanitize `html` as a full document, with the engine's defaults.
+--- One-shot: sanitize `html` as a full document, with the sanitizer core's defaults.
 function M.sanitize_document(html, base_url)
   return M.use(function(s) return s:sanitize_document(html, base_url) end)
 end

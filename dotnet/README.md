@@ -3,9 +3,9 @@
 Clean HTML of constructs that can lead to Cross-Site Scripting (XSS).
 
 This package is a **thin P/Invoke binding** over the monorepo's one shared
-native engine — `core/native/libhtmlsanitizer.so`, compiled from pure Aether.
+native sanitizer core — `core/native/libhtmlsanitizer.so`, compiled from pure Aether.
 It contains **no sanitizer logic**: every member marshals to an
-`aether_hs_embed_*` call. One engine, one set of behaviours, N language
+`aether_hs_embed_*` call. One sanitizer core, one set of behaviours, N language
 surfaces.
 
 | File | Role |
@@ -19,7 +19,7 @@ it build and test on a box with no network.
 
 ## Building
 
-The engine is `dlopen`ed at run time, so nothing links against it — just build
+The sanitizer core is `dlopen`ed at run time, so nothing links against it — just build
 it first:
 
 ```sh
@@ -66,7 +66,7 @@ remains the deterministic way.
 
 ### Policy lists
 
-Six `IReadOnlyCollection<string>` views, each backed by the engine's own list —
+Six `IReadOnlyCollection<string>` views, each backed by the sanitizer core's own list —
 there is no managed mirror to fall out of sync:
 
 ```csharp
@@ -91,7 +91,7 @@ foreach (var scheme in s.AllowedSchemes) { /* ... */ }
 s.AllowedClasses.Clear();
 ```
 
-Enumeration is in the engine's own (unspecified but stable) order;
+Enumeration is in the sanitizer core's own (unspecified but stable) order;
 `ToSortedList()` is the deterministic version.
 
 ### Flags
@@ -120,9 +120,9 @@ s.OnFilterUrl((elem, raw, resolved) => resolved);   // "" drops the attribute
 ```
 
 `OnFilterUrl` returns the URL to use. The string is `strdup`'d into a buffer
-the **engine** takes ownership of — you do not free it, and it must not come
+the **sanitizer core** takes ownership of — you do not free it, and it must not come
 from `Marshal.AllocHGlobal` or `StringToCoTaskMemUTF8`, whose allocators the
-engine's `free()` knows nothing about.
+sanitizer core's `free()` knows nothing about.
 
 ### Node and Attribute
 
@@ -148,7 +148,7 @@ attr.SetValue("https://example.com/safe");   // rewrite in place
 ```
 
 `SetValue` is safe with a transient buffer: `aether_hs_embed_attr_set_value`
-**copies** its argument engine-side.
+**copies** its argument core-side.
 
 ## Marshalling notes
 
@@ -167,7 +167,7 @@ real bug avoided:
   `string` marshalling is ANSI on some platforms, which mangles non-ASCII HTML
   (conformance check 4 catches exactly this). The binding encodes UTF-8 itself
   in `Native.Encode`.
-- **Callback integers are `int`, not `long`/`nint`.** The engine emits its
+- **Callback integers are `int`, not `long`/`nint`.** The sanitizer core emits its
   closure calls as `int(*)(...)`; a host declaring `long` gets a 4-vs-8-byte
   mismatch on LP64 — garbage `reason` values and corrupted stack arguments.
   Every delegate is also explicitly
@@ -178,7 +178,7 @@ real bug avoided:
 the sanitizer. A local delegate would be collected — or its marshalling stub
 freed — and the process would crash on the next callback. The list is cleared
 in `Dispose`, *after* `aether_hs_embed_free` has run, which is the only point
-at which the engine is guaranteed never to invoke a hook again.
+at which the sanitizer core is guaranteed never to invoke a hook again.
 
 **`user_data` is unused.** The ABI round-trips an opaque `user_data` as each
 callback's first argument so a binding can find the object that owns the hook.
@@ -213,8 +213,8 @@ keeps the binding testable on an air-gapped machine. Swapping in xunit later
 is mechanical — each `Check(...)` is one `[Fact]`.
 
 ```sh
-aeb dotnet/.tests.ae     # builds the engine, then runs the suite
-# or, with the engine already built:
+aeb dotnet/.tests.ae     # builds the sanitizer core, then runs the suite
+# or, with the sanitizer core already built:
 HTMLSANITIZER_LIB=../core/native/libhtmlsanitizer.so \
     dotnet run --project test/HtmlSanitizer.Tests.csproj
 ```
@@ -226,6 +226,6 @@ SDK — rather than failing the build DAG for a missing toolchain.
 > **Status on this checkout:** the .NET SDK is **not installed** on the
 > development box these bindings were written on, so the C# has been reviewed
 > but not compiled or executed here. `aeb dotnet/.tests.ae` reports
-> `dotnet: SKIPPED` and exits 0. The engine ABI it targets is proven by
+> `dotnet: SKIPPED` and exits 0. The sanitizer core ABI it targets is proven by
 > `core_tests/abi_smoke.c` and by the Dart, Lua, Python, Ruby, Go, Java,
 > JavaScript and Rust bindings that do run.

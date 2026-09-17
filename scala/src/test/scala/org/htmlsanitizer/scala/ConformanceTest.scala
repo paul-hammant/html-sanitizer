@@ -11,12 +11,12 @@ import scala.collection.mutable
  * Proves the '''Scala layer''' marshals every value shape correctly. Since that
  * layer sits on the Java binding rather than on its own FFI, what this suite
  * really pins down is that the Scala sugar — function-value callbacks, the
- * `+=`/`-=` allow-list ops, the loan pattern — reaches the same engine
+ * `+=`/`-=` allow-list ops, the loan pattern — reaches the same sanitizer core
  * behaviour the Java and Python suites see. A function literal that failed to
  * become the right SAM, or a `+=` that mutated a copy instead of the live view,
  * would fail here and nowhere else.
  *
- * It is NOT a sanitizer test suite — the behavioural cases live in the engine's
+ * It is NOT a sanitizer test suite — the behavioural cases live in the sanitizer core's
  * own tests and run once, in Aether.
  *
  * A plain main method, not ScalaTest or MUnit, for the same reason the Java

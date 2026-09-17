@@ -20,7 +20,7 @@ Rewrite `.tests.ae` and delete the script after the parity check.
   `*.fuel` litter lands there, not in `pharo/`.
 - **Loads the Tonel package straight from the working tree** via Metacello
   (`repository: tonel://<dir>`), then runs `test --junit-xml-output`.
-- Pharo is a real uFFI, **not a JVM** — no Java classpath, only the engine
+- Pharo is a real uFFI, **not a JVM** — no Java classpath, only the sanitizer core
   `.so` via `env(...)`.
 
 ### Rewrite `pharo/.tests.ae`
@@ -38,14 +38,14 @@ aeb(cap) {
         baseline("HtmlSanitizer")       // your BaselineOfHtmlSanitizer
         tonel_dir("src")                // Tonel sources (default "src")
         suite("HtmlSanitizer")          // SUnit category (default = baseline)
-        env("HTMLSANITIZER_LIB", lib)   // the engine .so the uFFI binds
+        env("HTMLSANITIZER_LIB", lib)   // the sanitizer core .so the uFFI binds
     }
 }
 ```
 
 ### Parity to confirm before deleting the script
 
-1. **`HTMLSANITIZER_LIB`** — the uFFI binding needs the engine `.so`; thread it
+1. **`HTMLSANITIZER_LIB`** — the uFFI binding needs the sanitizer core `.so`; thread it
    via `env(...)`.
 2. **The baseline name** — the SDK loads `BaselineOf<baseline>`; confirm your
    `src/BaselineOfHtmlSanitizer/` matches `baseline("HtmlSanitizer")`.

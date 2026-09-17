@@ -4,7 +4,7 @@
 # Inputs (set by groovy/.tests.ae; all have sensible defaults for a manual run):
 #   HS_JAVA_CLASSES    the Java binding's compiled classes (java/.build.ae artifact)
 #   HS_OUT             where to put the compiled Groovy classes
-#   HTMLSANITIZER_LIB  the engine .so                      (core/.build.ae artifact)
+#   HTMLSANITIZER_LIB  the sanitizer core .so                      (core/.build.ae artifact)
 #
 # Exit codes: 0 pass, 1 fail, 77 = no usable Groovy toolchain (SKIP).
 #

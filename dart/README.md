@@ -3,14 +3,14 @@
 Clean HTML of constructs that can lead to Cross-Site Scripting (XSS).
 
 This package is a **thin `dart:ffi` binding** over the monorepo's one shared
-native engine — `core/native/libhtmlsanitizer.so`, compiled from pure Aether.
+native sanitizer core — `core/native/libhtmlsanitizer.so`, compiled from pure Aether.
 It contains **no sanitizer logic**: every member marshals to an
-`aether_hs_embed_*` call. One engine, one set of behaviours, N language
+`aether_hs_embed_*` call. One sanitizer core, one set of behaviours, N language
 surfaces.
 
 ## Building
 
-The engine is `dlopen`ed at runtime, so nothing needs to link against it —
+The sanitizer core is `dlopen`ed at runtime, so nothing needs to link against it —
 just build it first:
 
 ```sh
@@ -60,7 +60,7 @@ Using a closed sanitizer throws `StateError`. `close()` is idempotent.
 
 ### Policy lists
 
-Six set-like views, each backed by the engine's own list — there is no Dart
+Six set-like views, each backed by the sanitizer core's own list — there is no Dart
 mirror to fall out of sync:
 
 ```dart
@@ -82,7 +82,7 @@ s.allowedSchemes.toSortedList();      // ['http', 'https']
 s.allowedClasses.clear();
 ```
 
-`toList()` enumerates in the engine's own (unspecified but stable) order;
+`toList()` enumerates in the sanitizer core's own (unspecified but stable) order;
 `toSortedList()` is the deterministic version.
 
 ### Flags
@@ -111,10 +111,10 @@ s.onFilterUrl((elem, raw, resolved) => resolved);   // '' drops the attribute
 ```
 
 `onFilterUrl` returns the URL to use. The string is copied into a `malloc`'d C
-buffer the engine takes ownership of — you do not free it.
+buffer the sanitizer core takes ownership of — you do not free it.
 
 Dart forbids an `exceptionalReturn` on a pointer-returning native callback, so
-a handler that **throws** hands the engine a null URL. Keep `onFilterUrl`
+a handler that **throws** hands the sanitizer core a null URL. Keep `onFilterUrl`
 handlers total.
 
 ### Node and Attribute
@@ -137,7 +137,7 @@ attr.value = 'https://example.com/safe';   // rewrite in place
 ```
 
 `attr.value = ...` is safe with a transient buffer: `aether_hs_embed_attr_set_value`
-**copies** its argument engine-side, so the binding frees the native string
+**copies** its argument core-side, so the binding frees the native string
 immediately after the call.
 
 ## How the callback bridge works
@@ -151,9 +151,9 @@ lifetime a synchronous `sanitize` call needs.
 Two consequences shape the code:
 
 - **Keepalive.** Every `NativeCallable` is stored on the `HtmlSanitizer`.
-  Dropping the reference leaks the trampoline; closing it while the engine can
+  Dropping the reference leaks the trampoline; closing it while the sanitizer core can
   still call it crashes the process. They are closed in `close()`, *after*
-  `aether_hs_embed_free` has run — the only point at which the engine is
+  `aether_hs_embed_free` has run — the only point at which the sanitizer core is
   guaranteed never to invoke a hook again.
 - **`user_data` is unused.** The ABI passes an opaque `user_data` back as each
   callback's first argument so a binding can find the object that owns the
@@ -164,16 +164,16 @@ Two consequences shape the code:
 
 ## Memory
 
-Every `char*` the engine returns is caller-owned. `Api.takeString` copies it
+Every `char*` the sanitizer core returns is caller-owned. `Api.takeString` copies it
 into a Dart string and frees it through `aether_hs_embed_free_string` in a
 `finally`; every string result in this package goes through that one function.
 Borrowed `const char*` **arguments** (the `name`/`value`/`raw`/`resolved`
 callback parameters) go through `borrowString`, which does *not* free — the
-engine owns those.
+sanitizer core owns those.
 
-Strings handed *to* the engine are allocated with `calloc` and freed in a
+Strings handed *to* the sanitizer core are allocated with `calloc` and freed in a
 `finally` around the call. The one exception is `onFilterUrl`'s return value,
-allocated with `malloc` precisely because the engine frees it.
+allocated with `malloc` precisely because the sanitizer core frees it.
 
 An `HtmlSanitizer` is **not** safe for concurrent use — the native handle
 carries mutable policy and hook state, and `NativeCallable.isolateLocal`
@@ -187,8 +187,8 @@ shapes. Checks 10 and 11 — the callback trampoline and the string-returning
 `onFilterUrl` — are both implemented and passing; this binding skips nothing.
 
 ```sh
-aeb dart/.tests.ae     # builds the engine, then runs dart test
-# or, with the engine already built:
+aeb dart/.tests.ae     # builds the sanitizer core, then runs dart test
+# or, with the sanitizer core already built:
 HTMLSANITIZER_LIB=../core/native/libhtmlsanitizer.so dart test
 ```
 

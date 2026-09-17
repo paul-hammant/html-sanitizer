@@ -9,7 +9,7 @@
 //                    and a report of what went and why.
 //
 // The report exists because the on_removing_* callbacks cannot serve every
-// caller: the WASM and BEAM bindings have no way to hand the engine a
+// caller: the WASM and BEAM bindings have no way to hand the sanitizer core a
 // function pointer, and a caller who wants a summary rather than the ability
 // to cancel a removal should not have to install a hook.
 

@@ -1,7 +1,7 @@
 // Clojure binding tests.
 //
 // The Clojure layer is NOT a second FFI: it calls the Java binding's classes
-// (bldr.dep java/.build.ae -> the standard JVM classpath artifact) and reaches the engine through
+// (bldr.dep java/.build.ae -> the standard JVM classpath artifact) and reaches the sanitizer core through
 // them. So this node deps BOTH java/.build.ae (for the classpath) and
 // core/.build.ae (for the .so that HTMLSANITIZER_LIB points at).
 //

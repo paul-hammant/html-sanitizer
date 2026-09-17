@@ -4,7 +4,7 @@ Cleans HTML of constructs that can lead to XSS.
 
 This layer is **idiomatic sugar only**. It carries no sanitizer logic *and no
 FFI*: it compiles against the Java binding (`java/`, FFM / Panama) and reaches
-the pure-Aether engine in `core/htmlsanitizer.ae` through it, by ordinary JVM
+the pure-Aether sanitizer core in `core/htmlsanitizer.ae` through it, by ordinary JVM
 interop.
 
 That is deliberate. There is exactly **one** FFI per runtime in this monorepo,
@@ -39,7 +39,7 @@ htmlSanitizer {
 ```
 
 `HtmlSanitizer` is `AutoCloseable`, so `use` releases the native handle and the
-upcall stubs. It is **not thread-safe** — the engine calls hooks re-entrantly
+upcall stubs. It is **not thread-safe** — the sanitizer core calls hooks re-entrantly
 during `sanitize`.
 
 For the one-expression case there is `sanitizing`, which constructs, runs and
@@ -63,14 +63,14 @@ s.allowDataAttributes = true
 
 **Allow-lists as collections.** Six live views — `allowedTags`,
 `allowedAttributes`, `allowedCssProperties`, `allowedSchemes`, `allowedClasses`,
-`uriAttributes`. They are views on the engine, not copies:
+`uriAttributes`. They are views on the sanitizer core, not copies:
 
 ```kotlin
 s.allowedTags += "my-widget"          // allow
 s.allowedTags -= "script"             // deny
 s.allowedTags += listOf("b", "i")     // bulk
 "div" in s.allowedTags                // query
-s.allowedSchemes.count                // live count, straight from the engine
+s.allowedSchemes.count                // live count, straight from the sanitizer core
 s.allowedSchemes.sorted()             // AllowList is Iterable<String>
 s.allowedTags.replaceWith("b", "i")   // start from nothing
 ```
@@ -112,7 +112,7 @@ node.nodeKind                    // NodeKind.DOCUMENT / ELEMENT / TEXT / COMMENT
 reason                           // RemovalReason.NOT_ALLOWED_TAG, ...
 ```
 
-Both have an `UNKNOWN` member, so a newer engine adding a constant cannot make
+Both have an `UNKNOWN` member, so a newer sanitizer core adding a constant cannot make
 this layer throw — the ABI's constants are append-only.
 
 **DOM sugar**
@@ -174,7 +174,7 @@ classes** before committing to it:
 If none works, the script exits 77 and the aeb node reports a skip. It does not
 report a pass.
 
-## Engine resolution
+## Sanitizer core resolution
 
 Inherited from the Java binding:
 

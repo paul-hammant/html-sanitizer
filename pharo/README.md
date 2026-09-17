@@ -3,7 +3,7 @@
 Cleans HTML of constructs that can lead to XSS.
 
 This package is **marshalling only**. The sanitizer itself — HTML5 tokenizer,
-DOM, CSS parser, URL resolver, allow-lists — is the pure-Aether engine in
+DOM, CSS parser, URL resolver, allow-lists — is the pure-Aether sanitizer core in
 `core/htmlsanitizer.ae`, shared by every language binding in this monorepo and
 reached through the `aether_hs_embed_*` C ABI (`core/embed.ae`).
 
@@ -16,8 +16,8 @@ Pharo is not a JVM, so it binds the C ABI directly with UnifiedFFI.
 * **Pharo 11 or newer** (developed and tested against Pharo 11). UnifiedFFI and
   SUnit are both in the base image, so the package has **no external
   dependencies**.
-* The engine shared library, found at run time (see
-  [Engine resolution](#engine-resolution)).
+* The sanitizer core shared library, found at run time (see
+  [Sanitizer core resolution](#sanitizer-core-resolution)).
 
 ## Loading it
 
@@ -64,14 +64,14 @@ or, for one fragment with the secure defaults:
 HtmlSanitizer sanitize: '<div onclick=''alert(1)''>Hello</div>'.
 ```
 
-`close` is idempotent. The sanitizer is **not thread-safe** — the engine calls
+`close` is idempotent. The sanitizer is **not thread-safe** — the sanitizer core calls
 hooks re-entrantly during `sanitize`.
 
 ## Allow-lists
 
-Six live views on the engine, selected by symbol: `#tags`, `#attributes`,
+Six live views on the sanitizer core, selected by symbol: `#tags`, `#attributes`,
 `#cssProperties`, `#schemes`, `#classes`, `#uriAttributes`. Nothing is cached —
-every query goes to the engine.
+every query goes to the sanitizer core.
 
 ```smalltalk
 s allow: 'my-widget' on: #tags.
@@ -115,7 +115,7 @@ Removal reasons arrive as Symbols — `#notAllowedTag`, `#notAllowedAttribute`,
 `#notAllowedStyle`, `#notAllowedUrlValue`, `#notAllowedValue`,
 `#notAllowedCssClass`, `#classAttributeEmpty`, `#styleAttributeEmpty` — or
 `#unknown` for a code this build does not know. The ABI's constants are
-append-only, so `#unknown` means a newer engine, not an error.
+append-only, so `#unknown` means a newer sanitizer core, not an error.
 
 ## The DOM
 
@@ -159,7 +159,7 @@ The suite is SUnit (`HtmlSanitizerConformanceTest`), run headless. It mirrors
 the 12 checks in `docs/conformance.md` and adds the remaining callback shapes,
 plus checks specific to a real FFI binding: that `close` is idempotent (a
 double free would crash, not raise), that `during:` closes even when the block
-throws, that clearing a hook does not leave the engine calling a stale pointer,
+throws, that clearing a hook does not leave the sanitizer core calling a stale pointer,
 and that `asDictionary` survives the callback.
 
 Because this is the only *real* FFI in my family of five, those checks carry
@@ -195,9 +195,9 @@ mkdir -p ~/.local/pharo && cd ~/.local/pharo
 curl -L https://get.pharo.org/64/110+vm | bash
 ```
 
-## Engine resolution
+## Sanitizer core resolution
 
-`HtmlSanitizerLibrary` is the only class that knows where the engine lives.
+`HtmlSanitizerLibrary` is the only class that knows where the sanitizer core lives.
 Resolution order matches every other binding:
 
 1. an explicit path — `HtmlSanitizerLibrary explicitPath: '/path/to/lib.so'`
@@ -213,11 +213,11 @@ Resolution order matches every other binding:
   malformed byte sequence cannot leak the buffer on its way out. Anything else
   leaks.
 * `FFICallback` objects are held in the sanitizer's `callbacks` dictionary for
-  its whole life. Letting one be garbage-collected while the engine can still
-  call it crashes the VM. `close` frees the engine handle *first* — which
-  releases the engine's callback boxes — so dropping the references immediately
+  its whole life. Letting one be garbage-collected while the sanitizer core can still
+  call it crashes the VM. `close` frees the sanitizer core handle *first* — which
+  releases the sanitizer core's callback boxes — so dropping the references immediately
   afterwards is safe.
-* `whenFilteringUrl:`'s answer and `HsAttribute >> value:` both hand the engine
+* `whenFilteringUrl:`'s answer and `HsAttribute >> value:` both hand the sanitizer core
   a **libc-malloc'd** buffer it then owns and frees. `ExternalAddress
   allocate:` is malloc underneath, which is the matching allocator; neither is
   freed on this side.
