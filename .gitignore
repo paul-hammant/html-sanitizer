@@ -29,6 +29,9 @@
 **/zig-cache/
 **/.zig-cache/
 **/zig-out/
+# gleam/.tests.ae runs `gleam deps download`, which regenerates this hex
+# lockfile from the ranges in gleam.toml — a build artifact here, not source.
+/gleam/manifest.toml
 **/.nimcache/
 **/nimcache/
 # Nim compiles tests/tconformance.nim to a sibling binary of the same name
