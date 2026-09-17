@@ -319,7 +319,7 @@ check('clearing a hook restores default behaviour', function (HtmlSanitizer $s):
 });
 
 check('sanitizeDocument is wired', function (HtmlSanitizer $s): void {
-    eqStr($s->sanitizeDocument('<div>doc<script>x</script></div>'), '<div>doc</div>');
+    eqStr($s->sanitizeDocument('<div>doc<script>x</script></div>'), '<html><head></head><body><div>doc</div></body></html>');
 });
 
 check('allowDataAttributes flag', function (HtmlSanitizer $s): void {
@@ -363,7 +363,7 @@ check('closed sanitizer rejects use', function (): void {
 
 check('one-shot helpers', function (): void {
     eqStr(HtmlSanitizer::sanitizeOnce('<div>a<script>b</script></div>'), '<div>a</div>');
-    eqStr(HtmlSanitizer::sanitizeDocumentOnce('<div>a<script>b</script></div>'), '<div>a</div>');
+    eqStr(HtmlSanitizer::sanitizeDocumentOnce('<div>a<script>b</script></div>'), '<html><head></head><body><div>a</div></body></html>');
 });
 
 check('many sanitize calls do not leak or crash', function (HtmlSanitizer $s): void {

@@ -286,11 +286,23 @@ final class Native
      * Read a BORROWED const char* (a callback argument) without freeing it —
      * the engine owns those.
      *
-     * @param FFI\CData|null $ptr
+     * PHP's FFI may hand a `const char*` callback argument to the closure
+     * either as an `FFI\CData` pointer or, since the ae >= 0.677 callback ABI,
+     * already decoded to a native PHP string. Accept both: a string is returned
+     * as-is (`FFI::isNull` would fatal on it — the v0.315/ae-0.681 regression),
+     * a CData pointer is read through `FFI::string`.
+     *
+     * @param FFI\CData|string|null $ptr
      */
     public static function borrowString($ptr): string
     {
-        if ($ptr === null || FFI::isNull($ptr)) {
+        if ($ptr === null) {
+            return '';
+        }
+        if (is_string($ptr)) {
+            return $ptr;
+        }
+        if (FFI::isNull($ptr)) {
             return '';
         }
         return FFI::string($ptr);
