@@ -48,3 +48,6 @@
 # wasm build outputs (wasm/build.sh regenerates them)
 /wasm/dist/
 /wasm/build/
+
+# release artifacts (release/build.sh regenerates them)
+/release/dist/

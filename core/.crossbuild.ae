@@ -1,0 +1,58 @@
+// Cross-build the sanitizer core for the desktop release matrix from ONE host
+// (Linux), via aeb's aether.shared_lib(target=...) which drives
+// `ae build --target=<triple>` (aether's bundled zig-cc backend — no per-OS
+// runner, no target hardware). This is the aeb-native equivalent of
+// release/build.sh's matrix: each block emits one
+// libhtmlsanitizer-<os>-<arch>.<ext> that release/build.sh checksums and ships.
+//
+// Matrix (4 that cross-build clean from Linux): linux/macos x x86_64/arm64.
+// Windows (PE/DLL) and FreeBSD are opt-in extras in release/build.sh, not here.
+//
+// source/extra_source mirror .build.ae (embed.ae + _embed_support.c). UNLIKE
+// selenium's crossbuild there is NO caps() and NO lib(): the sanitizer core is
+// a pure string->string transform with zero third-party deps — a deliberate
+// security property (see core/.build.ae). extra_source takes an ABSOLUTE path:
+// ae >= 0.638's cross path (--target) no longer resolves a relative --extra C
+// path from this node's dir.
+//
+// size() threads `ae build --size` (size-optimize + strip), so the emitted
+// libs are ~0.5MB, not the unstripped-debug default. Requires aeb >= v0.296
+// (the aether.shared_lib size() setter) — ci/versions.env pins v0.315.
+
+import bldr
+import aether
+
+aeb(cap) {
+    bldr.build() {
+        support_c = string.concat(bldr.source_dir(builder_context()), "/_embed_support.c")
+
+        aether.shared_lib() {
+            source("embed.ae")
+            size()
+            extra_source(support_c)
+            target("x86_64-linux")
+            output("libhtmlsanitizer-linux-x86_64.so")
+        }
+        aether.shared_lib() {
+            source("embed.ae")
+            size()
+            extra_source(support_c)
+            target("aarch64-linux")
+            output("libhtmlsanitizer-linux-arm64.so")
+        }
+        aether.shared_lib() {
+            source("embed.ae")
+            size()
+            extra_source(support_c)
+            target("x86_64-macos")
+            output("libhtmlsanitizer-macos-x86_64.dylib")
+        }
+        aether.shared_lib() {
+            source("embed.ae")
+            size()
+            extra_source(support_c)
+            target("aarch64-macos")
+            output("libhtmlsanitizer-macos-arm64.dylib")
+        }
+    }
+}
