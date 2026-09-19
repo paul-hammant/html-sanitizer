@@ -39,10 +39,16 @@ The tag comes from `RELEASE_TAG`, else the repo-root
 `HTMLSANITIZER_VERSION` is the single source of truth a fetch node would read, so
 there is no per-binding tag literal to drift.
 
-**Windows / FreeBSD** are opt-in (`RELEASE_EXTRA_TARGETS=1`). Windows cross-builds
-to real PE DLLs (plus a `<dll>.lib` import library, shipped + checksummed for
-build-time linkers; our FFI bindings `dlopen` at runtime and don't need it).
-FreeBSD needs `AETHER_SYSROOT` and skips loudly without it.
+**Windows** is in the default matrix — it cross-builds to real PE DLLs (x86_64 +
+arm64), each with a `<dll>.lib` import library shipped + checksummed for
+build-time linkers (our FFI bindings `dlopen` at runtime and don't need it). We
+ship the DLLs even though a Linux host cannot *run* them: the cross-build is
+deterministic, so a Windows user gets bytes verifiable against the `.sha256`, and
+on-target confirmation is recorded in [`ATTESTATIONS.md`](ATTESTATIONS.md) when
+someone runs a binding's suite on real Windows.
+
+**FreeBSD** stays opt-in (`RELEASE_EXTRA_TARGETS=1`) — it needs `AETHER_SYSROOT`
+(a FreeBSD base sysroot) and skips loudly without it.
 
 ## Cut a GitHub release (manual, no repo settings needed)
 
