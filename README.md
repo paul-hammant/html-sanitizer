@@ -164,7 +164,7 @@ sanitizer core and every binding whose toolchain is present.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/aether-lang-dev/aeb/main/get.sh \
-  | AE_PIN=0.681.0 AEB_REF=v0.315 sh
+  | AE_PIN=0.695.0 AEB_REF=v0.318 sh
 ```
 
 Prefer downloading to a file first if you want the fetch error surfaced and
@@ -172,14 +172,14 @@ install progress shown; a path-named invocation runs the same way:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/aether-lang-dev/aeb/main/get.sh -o get.sh
-AE_PIN=0.681.0 AEB_REF=v0.315 sh get.sh
+AE_PIN=0.695.0 AEB_REF=v0.318 sh get.sh
 ```
 
 (A CI step can instead *source* `get.sh` as a function library — set
 `AEBGET_SOURCE_ONLY=1` so sourcing only defines the functions — then call
 `aeb_bootstrap`.)
 
-The known-good pair is `ae v0.681.0` + `aeb v0.315` (see `ci/versions.env`).
+The known-good pair is `ae v0.695.0` + `aeb v0.318` (see `ci/versions.env`).
 The ae **floor is 0.677.0** — aeb needs aether's `@c_callback`
 weak-emit codegen (first in 0.677) and the `fs.make_temp_file` runtime symbols
 (0.670); install ae and its `libaether.a` as one matched set, as `get.sh` does.
