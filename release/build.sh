@@ -101,9 +101,44 @@ for t in $MATRIX; do
   fi
 done
 
+# ---- WebAssembly ----
+# The browser/DOM target: the SAME sanitizer core sources recompiled to wasm32,
+# not a .so. Ship it alongside the native libs so a page can load client-side
+# sanitization that is byte-for-byte the same logic. Prefer the zig-cc wasi
+# build (one self-contained .wasm, no emsdk); fall back to the emcc build.
+# Skipped (with a note) if neither toolchain is present — the native libs still
+# ship. Set RELEASE_NO_WASM=1 to skip explicitly.
+if [ "${RELEASE_NO_WASM:-0}" != "1" ]; then
+  wasm_built=0
+  if have zig; then
+    say "building wasm (zig cc, wasm32-wasi) …"
+    if ( cd "$ROOT/wasm" && ./build-zig.sh ) >"$DIST/.wasm.log" 2>&1; then wasm_built=1; fi
+  elif have emcc; then
+    say "building wasm (emcc) …"
+    if ( cd "$ROOT/wasm" && ./build.sh ) >"$DIST/.wasm.log" 2>&1; then wasm_built=1; fi
+  else
+    say "SKIP wasm — neither zig nor emcc on PATH (native libs still ship)"
+  fi
+  if [ "$wasm_built" = "1" ]; then
+    # Stage the .wasm + its .mjs loader glue with tag-stamped names + .sha256.
+    for src in "$ROOT/wasm/dist/htmlsanitizer-wasi.wasm" "$ROOT/wasm/dist/htmlsanitizer-wasi.mjs"; do
+      [ -f "$src" ] || continue
+      b="$(basename "$src")"; ext="${b##*.}"
+      name="htmlsanitizer-${TAG}-wasm32-wasi.${ext}"
+      cp "$src" "$DIST/$name"
+      ( cd "$DIST" && sha256sum "$name" > "$name.sha256" )
+      say "  wasm: $name ($(du -h "$DIST/$name" | cut -f1)) staged + .sha256"
+      built=$((built+1))
+    done
+    rm -f "$DIST/.wasm.log"
+  elif [ "${RELEASE_NO_WASM:-0}" != "1" ] && { have zig || have emcc; }; then
+    say "SKIP wasm — build failed (native libs still ship); see $DIST/.wasm.log"
+  fi
+fi
+
 # A combined checksum manifest over every artifact (not the .sha256 sidecars).
 # Named SHA256SUMS.txt so a browser renders it inline (no forced download).
-( cd "$DIST" && sha256sum ./*.so ./*.dylib ./*.dll ./*.dll.lib 2>/dev/null > SHA256SUMS.txt || true )
+( cd "$DIST" && sha256sum ./*.so ./*.dylib ./*.dll ./*.dll.lib ./*.wasm ./*.mjs 2>/dev/null > SHA256SUMS.txt || true )
 
 echo
 say "built $built artifact(s) into release/dist/ ($failed failed)"

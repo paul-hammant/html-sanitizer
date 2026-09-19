@@ -25,9 +25,14 @@ Outputs into `release/dist/` (gitignored):
 
 - `libhtmlsanitizer-<tag>-<os>-<arch>.{so,dylib,dll}` — the artifact
 - `<artifact>.sha256` — its checksum (sidecar)
+- `htmlsanitizer-<tag>-wasm32-wasi.wasm` + `.mjs` — the browser/DOM target, the
+  same sanitizer core recompiled to WebAssembly (built via `wasm/build-zig.sh`,
+  or `wasm/build.sh` with emcc; skipped with a note if neither is present).
+  `RELEASE_NO_WASM=1` to skip explicitly.
 - `SHA256SUMS.txt` — all artifacts in one manifest
 
-Each is stripped (`--size`). `so`=linux ELF, `dylib`=macOS Mach-O, `dll`=Windows PE.
+Each native lib is stripped (`--size`). `so`=linux ELF, `dylib`=macOS Mach-O,
+`dll`=Windows PE, `wasm`=wasm32-wasi.
 
 The tag comes from `RELEASE_TAG`, else the repo-root
 [`HTMLSANITIZER_VERSION`](../HTMLSANITIZER_VERSION) file, else `git describe`.

@@ -60,11 +60,12 @@ fi
 # nullglob makes an unmatched glob expand to nothing (not a literal).
 shopt -s nullglob
 bins=( "$DIST"/*.so "$DIST"/*.dylib "$DIST"/*.dll "$DIST"/*.dll.lib )
+wasm=( "$DIST"/*.wasm "$DIST"/*.mjs )   # the browser/DOM target, if built
 sums=( "$DIST"/*.sha256 )
 manifest=( "$DIST"/SHA256SUMS.txt )
 shopt -u nullglob
 [ "${#bins[@]}" -gt 0 ] || die "no artifacts in release/dist — run release/build.sh (or drop --no-build)"
-assets=( "${bins[@]}" "${sums[@]}" "${manifest[@]}" )
+assets=( "${bins[@]}" "${wasm[@]}" "${sums[@]}" "${manifest[@]}" )
 
 # Count only the loadable libraries (not the Windows .dll.lib import stubs).
 nbin=0; for f in "${bins[@]}"; do case "$f" in *.dll.lib) ;; *) nbin=$((nbin+1)) ;; esac; done
@@ -76,16 +77,24 @@ plats="$(
   done | sort -u | paste -sd', ' -
 )"
 
+# Note whether a wasm artifact is present, for the release notes.
+wasm_note=""
+[ "${#wasm[@]}" -gt 0 ] && wasm_note="
+
+Also included: **wasm32-wasi** — the same sanitizer core recompiled to
+WebAssembly (\`htmlsanitizer-$TAG-wasm32-wasi.wasm\` + its \`.mjs\` loader), so a
+browser cleans HTML with byte-for-byte the same logic as the native libs."
+
 NOTES="$(cat <<EOF
 Prebuilt \`libhtmlsanitizer\` — the shared sanitizer core, cross-built from one
-Linux host via \`ae build --target\` (zig cc). $nbin platform artifact(s): $plats.
+Linux host via \`ae build --target\` (zig cc). $nbin native platform artifact(s): $plats.
 
 Each language binding \`dlopen\`s / links one of these by its C ABI. Verify a
 download against its \`.sha256\` sidecar (or \`SHA256SUMS.txt\`) before use.
 
 The sanitizer core is a pure string->string transform — no network, no
 filesystem, no OS access — so every artifact is fully functional on its target
-with no platform caveats.
+with no platform caveats.$wasm_note
 
 Tag $TAG @ ${COMMIT:0:9}.
 EOF

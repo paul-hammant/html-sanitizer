@@ -1,0 +1,188 @@
+// core/.getFromGitHubReleases.ae — the FETCH substitute producer for the
+// sanitizer core .so. Instead of compiling libhtmlsanitizer from Aether source,
+// this node downloads the prebuilt lib for THIS platform from the project's
+// GitHub releases (verified against its published .sha256, cached), stages it,
+// and publishes the SAME artifact edges core/.build.ae publishes (shared_lib /
+// shared_library / ldlibdeps / shared_library_deps_including_transitive) — a
+// drop-in producer with no source to compile.
+//
+// Use it via aeb's overrideDep (aeb 0.314+): relabel the core-build edge to
+// this node —
+//
+//   aeb <target> --overrideDep core/.build.ae=core/.getFromGitHubReleases.ae
+//
+// so a binding's tests/package node consumes the FETCHED lib (its dep_artifact
+// reads what this node publishes) rather than building it. NOTE: a green build
+// under --overrideDep does not by itself prove the override took — a fetch-cache
+// fallback can satisfy it; the real proof is the shipped .so's checksum matching
+// the release. (See the sibling selenium repo's docs/Prebuilt-Engine-Packaging.md.)
+//
+// PURE Aether stdlib, NO shell-out: http.client (download, following GitHub's
+// CDN redirect), cryptography.sha256_file (verify), fs.* (cache + stage),
+// os.getenv/os.platform/os.arch (locate + release-asset name). No shelled
+// curl/wget/sha256sum, and no `uname -m` — os.arch() (aether 0.681+) supplies
+// the CPU-arch token. Cached under $XDG_CACHE_HOME/html-sanitizer/<tag>/ so one
+// download is shared. The release tag comes from the repo-root
+// HTMLSANITIZER_VERSION file (fs.read in _tag) — the single source of truth
+// every binding reads, so there is no per-binding tag literal to drift.
+//
+// Unlike selenium's node this also publishes `ldlibdeps` (the fourth edge
+// aether.shared_lib emits): our sanitizer core has no transitive deps, so it is
+// the .so itself — but the JVM/Go path-plumbing reads that key by name, so a
+// true drop-in must publish it.
+
+import bldr
+import std.string
+import std.os
+import std.fs
+import std.http.client
+import std.cryptography
+
+_repo() -> string { return "paul-hammant/html-sanitizer" }
+
+// The libhtmlsanitizer gh-release tag this node fetches. Single source of truth:
+// the repo-root HTMLSANITIZER_VERSION file (one dir up from this node's core/
+// source dir), read at build time so the tag lives in ONE place across every
+// binding. Falls back to the baked default only if the file is unreadable.
+_tag(srcdir: string) -> string {
+    v, err = fs.read(string.concat(srcdir, "/../HTMLSANITIZER_VERSION"))
+    if string.length(err) > 0 { return "v0.1.0" }
+    t = string.trim(v)
+    if string.length(t) == 0 { return "v0.1.0" }
+    return t
+}
+
+aeb(cap) {
+    bldr.build() {
+        srcdir = bldr.source_dir(builder_context())
+        tag = _tag(srcdir)
+        os_ = _os_tag()
+        arch = _arch()
+        ext = _ext(os_)
+        asset = string.concat("libhtmlsanitizer-", string.concat(tag,
+            string.concat("-", string.concat(os_, string.concat("-",
+            string.concat(arch, string.concat(".", ext)))))))
+        base = string.concat("https://github.com/", string.concat(_repo(),
+            string.concat("/releases/download/", tag)))
+
+        // cache: $XDG_CACHE_HOME (or OS default) /html-sanitizer/<tag>/lib<name>.<ext>
+        cache_dir = string.concat(_cache_base(os_), string.concat("/html-sanitizer/", tag))
+        libname = _libname(os_)
+        cached = string.concat(cache_dir, string.concat("/", libname))
+        _m = fs.mkdir_p(cache_dir)
+
+        // published .sha256 sidecar ("" if unavailable) — for verify + idempotence.
+        want = _download_text(string.concat(base, string.concat("/", string.concat(asset, ".sha256"))))
+        want = _first_word(want)
+
+        // idempotent: a present, checksum-matching cached copy skips the network.
+        need = 1
+        if fs.exists(cached) == 1 {
+            if string.length(want) == 0 { need = 0 }
+            else {
+                have_hex, _he = cryptography.sha256_file(cached)
+                if have_hex == want { need = 0 }
+            }
+        }
+        if need == 1 {
+            body, blen = _download_bytes(string.concat(base, string.concat("/", asset)))
+            if blen <= 0 { bldr.fail(builder_context(), string.concat("fetch failed: ", asset)) }
+            _w = fs.write_binary(cached, body, blen)
+            if string.length(want) > 0 {
+                got, _ge = cryptography.sha256_file(cached)
+                if got != want {
+                    bldr.fail(builder_context(), string.concat("checksum mismatch for ", asset))
+                }
+            }
+        }
+
+        // Stage into the node's target dir (the published path) + the in-tree
+        // native/ dir the link-time bindings' fixed -L path expects.
+        tgt = bldr.target_dir(builder_context())
+        libdir = string.concat(tgt, "/lib")
+        so_path = string.concat(libdir, "/libhtmlsanitizer.so")
+        _m2 = fs.mkdir_p(libdir)
+        _m3 = fs.mkdir_p(string.concat(srcdir, "/native"))
+        _c1 = fs.copy(cached, so_path)
+        _c2 = fs.copy(cached, string.concat(srcdir, "/native/libhtmlsanitizer.so"))
+
+        // Publish the exact edge set core/.build.ae (aether.shared_lib) publishes.
+        // ldlibdeps is the .so itself: the sanitizer core has no transitive deps.
+        publish_artifact("shared_lib", so_path)
+        publish_artifact("shared_library", so_path)
+        publish_artifact("ldlibdeps", so_path)
+        publish_artifact("shared_library_deps_including_transitive", so_path)
+    }
+}
+
+// ---- platform ---------------------------------------------------------------
+
+// os.platform() gives the OS kernel token; map to the release-asset OS word.
+_os_tag() -> string {
+    p = os.platform()
+    if p == "darwin" { return "macos" }
+    return p    // linux / windows / freebsd already match the asset vocabulary
+}
+_ext(os_: string) -> string {
+    if os_ == "macos" { return "dylib" }
+    if os_ == "windows" { return "dll" }
+    return "so"
+}
+// The staged/loaded name is always libhtmlsanitizer.so (what every binding's
+// loader looks for), even when the fetched asset is a .dylib/.dll — the bindings
+// resolve by this fixed name, and the OS loader keys on file contents not suffix.
+_libname(os_: string) -> string {
+    return "libhtmlsanitizer.so"
+}
+
+// _arch() — the CPU-arch word for the release-asset name. os.arch() (aether
+// 0.681+) returns the normalized ecosystem vocabulary the release assets use
+// ("x86_64" never "amd64", "arm64" never "aarch64"). Compile-time (no process
+// spawn — works in a sandbox with no shell) and reports the TARGET arch under
+// cross-compile, which `uname -m` could not.
+_arch() -> string {
+    return os.arch()
+}
+
+_cache_base(os_: string) -> string {
+    xdg = os.getenv("XDG_CACHE_HOME")
+    if string.length(xdg) > 0 { return xdg }
+    home = os.getenv("HOME")
+    if os_ == "macos" { return string.concat(home, "/Library/Caches") }
+    if os_ == "windows" {
+        la = os.getenv("LOCALAPPDATA")
+        if string.length(la) > 0 { return la }
+        return string.concat(home, "/AppData/Local")
+    }
+    return string.concat(home, "/.cache")
+}
+
+// ---- http (stdlib, redirect-following) --------------------------------------
+
+// GET a URL, following GitHub's CDN redirect, and return (body, length). length
+// <= 0 on any failure. Binary-safe (uses response_body_length, not str length).
+_download_bytes(url: string) -> (string, int) {
+    req = client.request("GET", url)
+    if req == null { return "", 0 }
+    _r = client.set_follow_redirects(req, 5)
+    resp, err = client.send_request(req)
+    if string.length(err) > 0 { return "", 0 }
+    if client.response_status(resp) != 200 { return "", 0 }
+    body = client.response_body(resp)
+    len = client.response_body_length(resp)
+    return body, len
+}
+
+// GET a small text resource (the .sha256 sidecar); "" on any failure.
+_download_text(url: string) -> string {
+    body, len = _download_bytes(url)
+    if len <= 0 { return "" }
+    return body
+}
+
+_first_word(s: string) -> string {
+    t = string.trim(s)
+    sp = string.index_of(t, " ")
+    if sp < 0 { return t }
+    return string.substring(t, 0, sp)
+}
