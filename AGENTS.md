@@ -1,8 +1,8 @@
-# Notes to self (LLM assisting on html-sanitizer)
+# AGENTS.md — notes for an agent working on html-sanitizer
 
-Not a CLAUDE.md — short, opinionated, written for a future LLM picking up
-mid-task. Re-read at the start of every session. The code is the source of
-truth; this is the map so your *first* attempt lands clean.
+Short, opinionated, written for an agent (LLM or human) picking up mid-task.
+Re-read at the start of every session. The code is the source of truth; this is
+the map so your *first* attempt lands clean.
 
 ## What this is, in one paragraph
 

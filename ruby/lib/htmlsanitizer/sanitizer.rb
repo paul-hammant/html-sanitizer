@@ -2,7 +2,7 @@
 
 # Idiomatic Ruby surface over the HtmlSanitizer core.
 #
-# Carries no sanitizer logic — see the monorepo's one rule in LLM.md. Every
+# Carries no sanitizer logic — see the monorepo's one rule in AGENTS.md. Every
 # method here marshals to an `aether_hs_embed_*` call in `native.rb`.
 
 require_relative "native"

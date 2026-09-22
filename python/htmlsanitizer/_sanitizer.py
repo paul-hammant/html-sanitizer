@@ -1,6 +1,6 @@
 """Idiomatic Python surface over the HtmlSanitizer core.
 
-Carries no sanitizer logic — see the monorepo's one rule in LLM.md. Every
+Carries no sanitizer logic — see the monorepo's one rule in AGENTS.md. Every
 method here marshals to a `aether_hs_embed_*` call in `_native.py`.
 """
 
