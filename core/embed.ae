@@ -38,8 +38,15 @@ import std.list
 import std.string
 
 // Caller-owned-string helpers + callback trampolines (core/_embed_support.c).
-extern hs_raw_dup(s: string) -> string
-extern hs_raw_free(s: string)
+// hs_raw_dup returns `ptr`, not `string`: a C `char*` returned as `-> string`
+// is copied into a counted Aether string (current ae, 0.897), which would leak
+// the malloc'd copy and hand the host an AetherString* handle instead of the
+// plain malloc'd char* the ABI promises. As `ptr` the malloc'd copy crosses
+// untouched. Same reason every string-returning export below is `-> ptr`
+// (an Aether `-> string` export now returns a counted-string handle the host
+// must give back through aether_<lib>_string_release — not our contract).
+extern hs_raw_dup(s: string) -> ptr
+extern hs_raw_free(s: ptr)
 extern hs_embed_cb_box(kind: int, host_fn: ptr, user_data: ptr) -> ptr
 extern hs_embed_cb_free_env(box: ptr)
 // Frees the box AND its env — for replacing/clearing a hook, where nothing
@@ -77,7 +84,7 @@ hs_embed_free(h: ptr) {
 // caller-owned and must come back through here. (Distinct from
 // hs_embed_free above, which releases a sanitizer HANDLE — the C helpers
 // are deliberately named hs_raw_* so neither shadows an Aether export.)
-hs_embed_free_string(s: string) {
+hs_embed_free_string(s: ptr) {
     hs_raw_free(s)
 }
 
@@ -85,7 +92,7 @@ hs_embed_free_string(s: string) {
 
 // Sanitize an HTML fragment. `base_url` may be "" (no resolution of relative
 // URLs). Returns a caller-owned string; free with hs_embed_free_string.
-hs_embed_sanitize(h: ptr, html: string, base_url: string) -> string {
+hs_embed_sanitize(h: ptr, html: string, base_url: string) -> ptr {
     if h == null { return hs_raw_dup("") }
     s = h as *HtmlSanitizer
     out = htmlsanitizer.sanitize(s, html, base_url)
@@ -95,7 +102,7 @@ hs_embed_sanitize(h: ptr, html: string, base_url: string) -> string {
 // Sanitize a full HTML document. Currently the same path as sanitize()
 // (the sanitizer core treats them alike); kept as a distinct export so bindings can
 // expose the C# library's two-method surface without drifting later.
-hs_embed_sanitize_document(h: ptr, html: string, base_url: string) -> string {
+hs_embed_sanitize_document(h: ptr, html: string, base_url: string) -> ptr {
     if h == null { return hs_raw_dup("") }
     s = h as *HtmlSanitizer
     out = htmlsanitizer.sanitize_document(s, html, base_url)
@@ -123,7 +130,7 @@ hs_embed_use_baseline(h: ptr, baseline: int) -> int {
 // Parse, repair nesting, and re-serialize canonically — removing NOTHING.
 // The removal report is empty afterwards. This is the "make it well-formed"
 // job, separable from "make it safe"; a caller wanting both calls sanitize.
-hs_embed_normalize(h: ptr, html: string, base_url: string) -> string {
+hs_embed_normalize(h: ptr, html: string, base_url: string) -> ptr {
     if h == null { return hs_raw_dup("") }
     s = h as *HtmlSanitizer
     out = htmlsanitizer.normalize(s, html, base_url)
@@ -153,7 +160,7 @@ hs_embed_removal_reason(h: ptr, index: int) -> int {
 }
 
 // Tag or attribute name ("script", "onclick", "#comment"). Caller-owned.
-hs_embed_removal_name(h: ptr, index: int) -> string {
+hs_embed_removal_name(h: ptr, index: int) -> ptr {
     if h == null { return hs_raw_dup("") }
     s = h as *HtmlSanitizer
     return hs_raw_dup(htmlsanitizer.removal_name(s, index))
@@ -161,7 +168,7 @@ hs_embed_removal_name(h: ptr, index: int) -> string {
 
 // What it contained — script body, attribute value, comment text; truncated
 // to 200 bytes. Caller-owned.
-hs_embed_removal_detail(h: ptr, index: int) -> string {
+hs_embed_removal_detail(h: ptr, index: int) -> ptr {
     if h == null { return hs_raw_dup("") }
     s = h as *HtmlSanitizer
     return hs_raw_dup(htmlsanitizer.removal_detail(s, index))
@@ -280,7 +287,7 @@ hs_embed_count(h: ptr, which: int) -> int {
 // (which every binding would then have to lifetime-manage), and the sets
 // here are policy lists of at most a few hundred entries, enumerated at
 // configuration time rather than in the sanitize hot path.
-hs_embed_item_at(h: ptr, which: int, index: int) -> string {
+hs_embed_item_at(h: ptr, which: int, index: int) -> ptr {
     if h == null { return hs_raw_dup("") }
     s = h as *HtmlSanitizer
     st = hs_pick_set(s, which)
@@ -399,14 +406,14 @@ hs_embed_node_kind(n: ptr) -> int {
 }
 
 // Element tag name (lowercased by the parser); "" for non-elements.
-hs_embed_node_name(n: ptr) -> string {
+hs_embed_node_name(n: ptr) -> ptr {
     if n == null { return hs_raw_dup("") }
     nd = n as *DomNode
     return hs_raw_dup(nd.name)
 }
 
 // Text/comment content; "" for elements and documents.
-hs_embed_node_value(n: ptr) -> string {
+hs_embed_node_value(n: ptr) -> ptr {
     if n == null { return hs_raw_dup("") }
     nd = n as *DomNode
     return hs_raw_dup(nd.value)
@@ -456,13 +463,13 @@ hs_embed_node_attr_at(n: ptr, index: int) -> ptr {
 }
 
 // Attribute name / value, as caller-owned strings.
-hs_embed_attr_name(a: ptr) -> string {
+hs_embed_attr_name(a: ptr) -> ptr {
     if a == null { return hs_raw_dup("") }
     at = a as *DomAttr
     return hs_raw_dup(at.name)
 }
 
-hs_embed_attr_value(a: ptr) -> string {
+hs_embed_attr_value(a: ptr) -> ptr {
     if a == null { return hs_raw_dup("") }
     at = a as *DomAttr
     return hs_raw_dup(at.value)

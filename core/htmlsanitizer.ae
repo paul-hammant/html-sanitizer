@@ -1982,7 +1982,7 @@ fn sanitize_node(s: *HtmlSanitizer, node: ptr, base_url: string) -> bool {
 // Runs BEFORE the security pass and independently of it, so normalize() and
 // sanitize() both get well-formed structure — that is the whole point of the
 // split. Idempotent: markup that already has <tbody> is untouched.
-fn repair_structure(node: ptr) {
+fn repair_structure(node: @keep ptr) {
     nd = node as *DomNode
     if nd.children == null {
         return
@@ -2012,7 +2012,10 @@ fn repair_structure(node: ptr) {
 // Give a <table>'s bare rows the <tbody> the parser omitted, and give bare
 // cells the <tr> they need. <thead>/<tfoot>/<caption>/<colgroup> are
 // section-level and stay where they are.
-fn wrap_table_rows(table: ptr) {
+// `@keep`: the new <tbody> stores `table` as its parent back-pointer, so the
+// parameter outlives the call (E0902 otherwise); repair_structure, which
+// passes its own parameter here, is `@keep` for the same reason.
+fn wrap_table_rows(table: @keep ptr) {
     td = table as *DomNode
     kids = td.children
     if kids == null { return }
@@ -2693,7 +2696,7 @@ removal_detail(s: *HtmlSanitizer, i: int) -> string {
     return v
 }
 
-sanitize_dom(s: *HtmlSanitizer, doc: ptr, context_node: ptr, base_url: string) -> ptr {
+sanitize_dom(s: *HtmlSanitizer, doc: @into ptr, context_node: ptr, base_url: string) -> ptr {
     clear_removals(s)
     sanitize_children(s, doc, base_url)
     post_process_node_rec(s, doc)

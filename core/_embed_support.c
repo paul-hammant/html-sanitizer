@@ -38,6 +38,7 @@
  */
 #include <stdlib.h>
 #include <string.h>
+#include <stdatomic.h>
 
 /* Aether's string ABI (std/string/aether_string.h, docs/aether-string-abi.md).
  *
@@ -49,6 +50,20 @@
  * these — reading one raw is how you get mojibake. */
 const char* aether_string_data(const void* s);
 void* string_new(const char* cstr);
+void string_retain(const char* s);
+
+/* A string a closure call returns is the CALLER's reference: the sanitizer
+ * core assigns `resolved = call(cb, ...)` and releases the old value, so a
+ * trampoline that hands back a string it was only lent must add a reference
+ * first, or the core releases the caller's own reference (a use-after-free
+ * once ae's counted strings landed). A counted Aether string starts with the
+ * 0xAE57C0DE magic; anything else (a C literal) is not counted, and the core
+ * does not release it either. */
+static const char* hs_str_ret(const char* s) {
+    const unsigned char* p = (const unsigned char*)s;
+    if (p && p[0] == 0xDE && p[1] == 0xC0 && p[2] == 0x57 && p[3] == 0xAE) string_retain(s);
+    return s;
+}
 
 /* ---- 1. caller-owned string bridge ---- */
 
@@ -78,8 +93,34 @@ void hs_raw_free(char* s) {
 typedef struct { void (*fn)(void); void* env; unsigned long long tag; } HsClosure;
 
 /* What we smuggle through .env: the host's function pointer plus an opaque
- * user_data the host uses to find its own instance/handler. */
-typedef struct { void* host_fn; void* user_data; } HsCb;
+ * user_data the host uses to find its own instance/handler.
+ *
+ * The env MUST start with codegen's closure-env header,
+ *
+ *     typedef struct { void (*_dtor)(void*); atomic_long _refs; } _AeEnvHead;
+ *
+ * (aether #1398 put the destructor first; #2494, ae 0.792, made envs
+ * reference counted with the count second and the destructor a RELEASE).
+ * The sanitizer core's `unbox_closure(slot)` now retains the env for the
+ * life of the local `cb` and releases it at scope exit:
+ * atomic_fetch_add(&env->_refs) then env->_dtor(env). With the old bare
+ * {host_fn, user_data} env that bumped user_data by one on every hook call
+ * (misaligned -> Zig's "incorrect alignment" panic, garbage everywhere
+ * else) and then CALLED host_fn as the destructor. The header below makes
+ * the env a real counted env: the box holds one reference, each call site
+ * borrows one more and gives it back, and the last release frees it. */
+typedef struct {
+    void (*dtor)(void*);        /* _AeEnvHead._dtor — a release */
+    _Atomic long refs;          /* _AeEnvHead._refs */
+    void* host_fn;
+    void* user_data;
+} HsCb;
+
+static void hs_cb_release(void* e) {
+    HsCb* cb = (HsCb*)e;
+    if (!cb) return;
+    if (atomic_fetch_sub_explicit(&cb->refs, 1, memory_order_acq_rel) == 1) free(cb);
+}
 
 /* Trampolines. Each matches ONE hook signature in core/htmlsanitizer.ae, and
  * each receives the env as its implicit first argument. The host-side
@@ -143,7 +184,7 @@ static int hs_tramp_ptr_ret_void(void* env, void* node) {
 static const char* hs_tramp_filter_url(void* env, void* elem,
                                        const char* raw, const char* resolved) {
     HsCb* cb = (HsCb*)env;
-    if (!cb || !cb->host_fn) return resolved;
+    if (!cb || !cb->host_fn) return hs_str_ret(resolved);
     /* In: unwrap the sanitizer core's AetherString* into plain C strings the host can
      * read. Out: the host returns a plain malloc'd C string, but the sanitizer core
      * assigns the result into an Aether `string` slot — so wrap it back into
@@ -153,10 +194,10 @@ static const char* hs_tramp_filter_url(void* env, void* elem,
     const char* c_resolved = aether_string_data(resolved);
     char* out = ((char* (*)(void*, void*, const char*, const char*))
                  cb->host_fn)(cb->user_data, elem, c_raw, c_resolved);
-    if (!out) return resolved;
+    if (!out) return hs_str_ret(resolved);
     /* An unchanged reply means "no rewrite" — hand the original back so we
      * neither copy nor free a pointer the host does not own. */
-    if (out == c_resolved || out == c_raw) return resolved;
+    if (out == c_resolved || out == c_raw) return hs_str_ret(resolved);
     void* wrapped = string_new(out);
     free(out);
     return (const char*)wrapped;
@@ -168,6 +209,8 @@ static const char* hs_tramp_filter_url(void* env, void* elem,
 static void* hs_box(void (*fn)(void), void* host_fn, void* user_data) {
     HsCb* env = (HsCb*)malloc(sizeof(HsCb));
     if (!env) return NULL;
+    env->dtor = hs_cb_release;
+    atomic_init(&env->refs, 1);   /* the box's reference */
     env->host_fn = host_fn;
     env->user_data = user_data;
     HsClosure* box = (HsClosure*)malloc(sizeof(HsClosure));
@@ -207,7 +250,7 @@ void* hs_embed_cb_box(int kind, void* host_fn, void* user_data) {
 void hs_embed_cb_free_env(void* boxp) {
     HsClosure* box = (HsClosure*)boxp;
     if (!box) return;
-    free(box->env);
+    hs_cb_release(box->env);   /* give back the box's reference */
     box->env = NULL;
 }
 
@@ -223,6 +266,6 @@ void hs_embed_cb_free_env(void* boxp) {
 void hs_embed_cb_free_box(void* boxp) {
     HsClosure* box = (HsClosure*)boxp;
     if (!box) return;
-    free(box->env);
+    hs_cb_release(box->env);
     free(box);
 }

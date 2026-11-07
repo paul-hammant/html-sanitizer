@@ -10,7 +10,8 @@ const s = await HtmlSanitizer.create();
 el.innerHTML = s.sanitize(untrustedHtml);      // or: s.setInnerHTML(el, html)
 ```
 
-~62 KB of `.wasm` plus ~13 KB of JS glue via Emscripten — or an ~85 KB
+~62 KB of `.wasm` plus ~13 KB of JS glue via Emscripten (measured on ae
+0.706) — or a ~210 KB (ae 0.897; ~85 KB on 0.706)
 single self-contained `.wasm` with **no glue at all** via `zig cc`. Both
 backends are supported and tested; see [Two backends](#two-backends).
 
@@ -80,7 +81,7 @@ divergence is a build bug rather than a behavioural difference.
 | | `build.sh` (Emscripten) | `build-zig.sh` (`zig cc`) |
 |---|---|---|
 | output | `htmlsanitizer.wasm` + `.js` glue | `htmlsanitizer-wasi.wasm`, **no glue** |
-| size | ~62 KB + ~13 KB | ~85 KB |
+| size | ~62 KB + ~13 KB (ae 0.706) | ~210 KB (ae 0.897) |
 | toolchain | emsdk (~1 GB) | one Zig tarball (~50 MB) |
 | target | `wasm32-emscripten` | `wasm32-wasi` |
 | driven by | emscripten runtime | plain `WebAssembly` API + a ~30-line WASI shim |

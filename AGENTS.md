@@ -62,6 +62,25 @@ Facts that bit during the build-out, all still true:
   trampoline in `.fn` and the host's function pointer + `user_data` in
   `.env`. That is the whole trick that gives 21 bindings real hooks over one
   ABI. Non-zero return from a `removing_*` hook **cancels** the removal.
+- **The callback env is a real Aether closure env.** Since ae 0.792
+  (#2494) every closure env starts `{void (*_dtor)(void*); atomic_long
+  _refs;}` and the sanitizer core's `unbox_closure(slot)` *retains* the env for
+  the call and *releases* it (calls `_dtor`) after. The old bare
+  `{host_fn, user_data}` env therefore had `user_data` bumped by one on
+  every hook call (Zig's "incorrect alignment" panic; a user_data mismatch
+  in `abi_smoke.c`) and `host_fn` called as a destructor. `HsCb` now carries
+  that header, with a release as its `_dtor`; the box holds one reference.
+  If codegen's env header ever changes again, this is where it breaks —
+  `abi_smoke.c`'s user_data checks are the tripwire.
+- **String results cross as `ptr`, not `string`.** On current ae an extern
+  declared `-> string` copies the C string into a counted Aether string
+  (leaking our malloc'd copy), and an exported `-> string` returns a
+  counted-string handle the host must release through
+  `aether_<lib>_string_release`. Neither is our caller-owned `char*`
+  contract, so `hs_raw_dup` and every string-returning `hs_embed_*` are
+  `-> ptr`. A string a closure call returns is the *caller's* reference
+  (the core releases the old value on assignment), so the `filter_url`
+  trampoline retains a string it hands back unchanged.
 - **`attr_set_value` copies.** It used to alias the host's buffer, which
   dangles the moment a Java confined `Arena` or a Go `C.CString` is freed.
 - **`set.items()` has no per-entry accessor in std.set** (its own regression
@@ -84,7 +103,12 @@ Two traps, both already paid for:
 - **Don't feed it `share/aether/MANIFEST`.** `multicore_scheduler.c` fails a
   `Mailbox` alignment `static_assert` on wasm32. `build.sh` mirrors the
   `RUNTIME_FILES` list from Aether's own `make ci-wasm` instead, plus
-  strbuilder/bytes/mem/set/stringseq/alloc.
+  strbuilder/bytes/mem/set/stringseq/alloc. Upstream's single list is now
+  `runtime/coop_runtime_sources.txt`; ae 0.897's generated C needs
+  `runtime/aether_exec.c` and `runtime/libaether_caps.c` from it (and
+  `libaether.h`, under `<prefix>/include/aether/` in a release install), so
+  a "undefined symbol: aether_exec_*" link error means this list drifted
+  again — diff it against that file.
 
 PCRE2 is stubbed (`wasm/src/regex_stub.c`) because the sanitizer core's only regex use
 is `disallow_css_property_value_regex`, which **no C-ABI caller can set** —
@@ -97,7 +121,8 @@ not unimplemented.) If a C-ABI setter is ever added, this stub must go and
 PCRE2 becomes an emscripten port / a real wasi build input.
 
 **Two backends, both wired and tested.** `build.sh` (emcc, ~62KB + JS glue) and
-`build-zig.sh` (`zig cc -target wasm32-wasi`, ~85KB, NO glue — driven by the
+`build-zig.sh` (`zig cc -target wasm32-wasi`, ~210KB since ae 0.897 links
+`aether_exec.c` + `libaether_caps.c`, NO glue — driven by the
 plain `WebAssembly` API). `wasm/.tests.ae` runs whichever is installed, both if
 both, asserting the SAME 22 checks against each; a divergence is a build bug.
 

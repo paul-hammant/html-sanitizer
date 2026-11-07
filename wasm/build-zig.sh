@@ -66,7 +66,7 @@ mkdir -p "$OUT" "$WORK"
 
 # ---- 1. Aether -> portable C (mangled aether_ exports; see build.sh) ----
 say "generating C from core/embed.ae"
-( cd "$ROOT/core" && aetherc --emit=csrc embed.ae "$WORK/hs.c" )
+( cd "$ROOT/core" && aetherc --emit=csrc --with=extern embed.ae "$WORK/hs.c" )
 
 # ---- 2. runtime sources (same minimal set as build.sh) ----
 RT="
@@ -78,6 +78,7 @@ runtime/utils/aether_bounds_check.c runtime/utils/aether_test.c
 runtime/utils/aether_cpu_detect.c runtime/utils/aether_simd_vectorized.c
 runtime/aether_runtime_types.c runtime/aether_locale_num.c runtime/aether_runtime.c
 runtime/aether_numa.c runtime/aether_host.c runtime/aether_resource_caps.c
+runtime/aether_exec.c runtime/libaether_caps.c
 runtime/actors/aether_send_buffer.c runtime/actors/aether_send_message.c
 runtime/actors/aether_unwind.c runtime/actors/aether_actor_thread.c
 std/string/aether_string.c std/math/aether_math.c std/alloc/aether_alloc.c
@@ -90,7 +91,17 @@ for f in $RT; do
     [ -f "$AE/$f" ] && SRCS="$SRCS $AE/$f"
 done
 
-INCS=$(find "$AE/runtime" "$AE/std" "$AE/include" -name '*.h' 2>/dev/null \
+# Only the roots that exist: a release install (ae >= 0.8xx) ships no
+# include/, and under `set -o pipefail` a find over a missing root fails the
+# whole pipeline and silently aborts the script.
+INC_ROOTS=""
+# libaether.h (which runtime/aether_exec.c includes) is include/ in a source
+# tree but <prefix>/include/aether/ beside a release's share/aether/.
+for d in runtime std include ../../include/aether; do
+    [ -d "$AE/$d" ] && INC_ROOTS="$INC_ROOTS $AE/$d"
+done
+# shellcheck disable=SC2086
+INCS=$(find $INC_ROOTS -name '*.h' 2>/dev/null \
        | sed 's|/[^/]*$||' | sort -u | sed 's|^|-I|' | tr '\n' ' ')
 
 EXPORTS=""

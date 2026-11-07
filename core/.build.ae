@@ -33,6 +33,11 @@ aeb(cap) {
             source("embed.ae")
             extra_source("_embed_support.c")
             output("libhtmlsanitizer.so")
+            // --with=extern: embed.ae declares the hs_raw_*/hs_embed_cb_* C
+            // helpers from _embed_support.c as externs, and current ae (0.897) makes
+            // --emit=lib reject an extern without the explicit grant. The
+            // externs only reach our own bridge C, never libc effects.
+            caps("extern")
         }
     }
 }
