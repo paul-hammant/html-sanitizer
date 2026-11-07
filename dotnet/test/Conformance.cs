@@ -345,8 +345,9 @@ internal static class Conformance
         Check("one-shot helpers", () =>
         {
             Eq(HtmlSanitizer.SanitizeOnce("<div>a<script>b</script></div>"), "<div>a</div>");
+            // sanitize_document emits a whole DOCUMENT (core_tests/.normalize.ae).
             Eq(HtmlSanitizer.SanitizeDocumentOnce("<div>a<script>b</script></div>"),
-               "<div>a</div>");
+               "<html><head></head><body><div>a</div></body></html>");
         });
 
         Check("many sanitize calls do not leak or crash", () =>
