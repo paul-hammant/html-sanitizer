@@ -6,12 +6,14 @@
 const std = @import("std");
 const hs = @import("htmlsanitizer");
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit(); // reports a leak on exit, which is the point
-    const alloc = gpa.allocator();
+pub fn main(init: std.process.Init) !void {
+    // init.gpa is leak-checked in Debug builds, which is the point of using it.
+    const alloc = init.gpa;
 
-    const out = std.io.getStdOut().writer();
+    var out_buf: [4096]u8 = undefined;
+    var file_writer = std.Io.File.stdout().writer(init.io, &out_buf);
+    const out = &file_writer.interface;
+    defer out.flush() catch {};
     try out.print("sanitizer core ABI version: {d}\n\n", .{hs.abiVersion()});
 
     const s = try hs.Sanitizer.init(alloc);

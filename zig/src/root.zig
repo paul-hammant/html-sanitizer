@@ -624,7 +624,7 @@ pub const Sanitizer = struct {
         // HTML is arbitrarily long, so NUL-terminate through the allocator
         // rather than a stack buffer.
         if (std.mem.indexOfScalar(u8, html, 0) != null) return Error.InteriorNul;
-        const chtml = self.allocator.dupeZ(u8, html) catch return Error.OutOfMemory;
+        const chtml = self.allocator.dupeSentinel(u8, html, 0) catch return Error.OutOfMemory;
         defer self.allocator.free(chtml);
         var cbase = try StackCStr.init(self.allocator, base_url);
         defer cbase.deinit();

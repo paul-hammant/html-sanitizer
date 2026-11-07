@@ -127,8 +127,8 @@ const TagSeen = struct {
     /// allocation failure has nowhere to be reported. Recording into
     /// preallocated storage keeps the callback infallible.
     names: [8][32]u8 = undefined,
-    lens: [8]usize = .{0} ** 8,
-    reasons: [8]hs.Reason = .{.not_allowed_tag} ** 8,
+    lens: [8]usize = @splat(0),
+    reasons: [8]hs.Reason = @splat(.not_allowed_tag),
     n: usize = 0,
 
     fn record(self: *TagSeen, name: []const u8, reason: hs.Reason) void {

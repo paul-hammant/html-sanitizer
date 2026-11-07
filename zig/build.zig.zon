@@ -12,7 +12,7 @@
     // itself. Do not change it — it is how a consumer's dependency graph
     // identifies this package across renames.
     .fingerprint = 0xb8d56016064ad47f,
-    .minimum_zig_version = "0.16.0",
+    .minimum_zig_version = "0.17.0",
     .paths = .{
         "build.zig",
         "build.zig.zon",

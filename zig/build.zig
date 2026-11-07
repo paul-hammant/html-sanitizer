@@ -119,10 +119,18 @@ fn engineSearchPath(b: *std.Build, engine_opt: ?[]const u8) []const []const u8 {
         if (e.len > 0) dirs.append(gpa, asDir(b, e)) catch @panic("OOM");
     }
     // A staged copy next to this build file, then the in-tree monorepo path.
-    dirs.append(gpa, b.pathFromRoot("native")) catch @panic("OOM");
-    dirs.append(gpa, b.pathFromRoot("../core/native")) catch @panic("OOM");
+    // (Zig 0.17 removed Build.pathFromRoot; Build.root is a Cache.Path.)
+    dirs.append(gpa, b.root.joinString(gpa, "native") catch @panic("OOM")) catch @panic("OOM");
+    dirs.append(gpa, b.root.joinString(gpa, "../core/native") catch @panic("OOM")) catch @panic("OOM");
 
-    return dirs.toOwnedSlice(gpa) catch @panic("OOM");
+    // Zig 0.17 turns a missing -L directory into a hard error for executables,
+    // so keep only the search directories that exist.
+    var kept: std.ArrayList([]const u8) = .empty;
+    for (dirs.items) |d| {
+        std.Io.Dir.cwd().access(b.graph.io, d, .{}) catch continue;
+        kept.append(gpa, d) catch @panic("OOM");
+    }
+    return kept.toOwnedSlice(gpa) catch @panic("OOM");
 }
 
 /// Accept either a directory or a path to the `.so` itself.

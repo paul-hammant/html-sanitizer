@@ -8,7 +8,9 @@ contains **no sanitizer logic**: every method marshals to an
 `aether_hs_embed_*` call across the C ABI described in `core/embed.ae`. One
 sanitizer core, one set of behaviours, N language surfaces.
 
-Requires **Zig 0.16.0** or newer.
+Requires **Zig 0.17.0** or newer (tested on 0.17.1). 0.16 no longer builds it:
+`build.zig` uses the 0.17 build API (`Build.root`, not `pathFromRoot`), and
+`Allocator.dupeZ` became `dupeSentinel(u8, s, 0)`.
 
 > Ported from 0.13 in-place. Zig 0.16 changed five things this binding used:
 > `.name` in `build.zig.zon` is an enum literal (and `.fingerprint` is now
