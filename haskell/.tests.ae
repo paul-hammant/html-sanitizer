@@ -55,7 +55,11 @@ aeb(cap) {
             println("haskell: could not stage the sanitizer core into haskell/native")
             return 1
         }
-    
+        // macOS: GHC's interpreter resolves `-lhtmlsanitizer` as
+        // libhtmlsanitizer.dylib in the -L dirs, never the .so name the core
+        // is built under, so stage that name too (harmless elsewhere).
+        _d = os.system("[ \"$(uname)\" = Darwin ] && cp -f \"${lib}\" \"${dest}/libhtmlsanitizer.dylib\"; true")
+
         // Drive the suite with runghc by preference, NOT cabal. cabal wants a
         // package database and, on a cold box, a `cabal update` — a network round
         // trip before a single assertion runs. runghc compiles the modules
