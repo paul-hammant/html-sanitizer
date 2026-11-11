@@ -164,7 +164,7 @@ sanitizer core and every binding whose toolchain is present.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/aether-lang-dev/aeb/main/get.sh \
-  | AE_PIN=0.897.0 AEB_REF=v0.341 sh
+  | AE_PIN=0.908.0 AEB_REF=v0.344 sh
 ```
 
 Prefer downloading to a file first if you want the fetch error surfaced and
@@ -172,15 +172,15 @@ install progress shown; a path-named invocation runs the same way:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/aether-lang-dev/aeb/main/get.sh -o get.sh
-AE_PIN=0.897.0 AEB_REF=v0.341 sh get.sh
+AE_PIN=0.908.0 AEB_REF=v0.344 sh get.sh
 ```
 
 (A CI step can instead *source* `get.sh` as a function library — set
 `AEBGET_SOURCE_ONLY=1` so sourcing only defines the functions — then call
 `aeb_bootstrap`.)
 
-The known-good pair is `ae v0.897.0` + `aeb v0.341` (see `ci/versions.env`),
-and 0.897.0 is also the ae floor: the sanitizer core relies on the reference-counted
+The known-good pair is `ae v0.908.0` + `aeb v0.344` (see `ci/versions.env`),
+and 0.897.0 is the ae floor (0.908.0 is a tracking bump): the sanitizer core relies on the reference-counted
 closure envs, the `@keep`/`@into` ownership annotations and the
 `--with=extern` gate of current ae, and nothing older was verified. Install ae
 and its `libaether.a` as one matched set, as `get.sh` does.

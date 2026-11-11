@@ -51,3 +51,4 @@
 
 # release artifacts (release/build.sh regenerates them)
 /release/dist/
+haskell/src/HtmlSanitizer/Native_stub.h
