@@ -33,7 +33,10 @@ HS_OUT=${HS_OUT:-"$root/target/.aeb/groovy-classes"}
 HTMLSANITIZER_LIB=${HTMLSANITIZER_LIB:-"$root/core/native/libhtmlsanitizer.so"}
 export HTMLSANITIZER_LIB
 
-if [ ! -d "$HS_JAVA_CLASSES" ]; then
+# The artifact is a classpath, one line per dependency; make it one
+# colon-separated list and test its first entry (the Java binding's classes).
+HS_JAVA_CLASSES=$(printf '%s' "$HS_JAVA_CLASSES" | tr '\n' ':')
+if [ ! -d "${HS_JAVA_CLASSES%%:*}" ]; then
     echo "groovy: the Java binding classes are missing ($HS_JAVA_CLASSES)." >&2
     echo "groovy: run \`aeb java/.build.ae\` first, or use \`aeb groovy/.tests.ae\`." >&2
     exit 1
