@@ -30,6 +30,7 @@
 import bldr
 import java
 import std.os
+import std.string
 import bldr (dep, dep_artifact, _get)
 import java (source_layout, jvm_args, skip_below_jdk)
 
@@ -64,7 +65,9 @@ aeb(cap) {
         //         jvm_args("-Dhtmlsanitizer.lib=${lib}")
         //     }
         test_classes = "${root}/target/tests/java/test-classes"
-        classes = dep_artifact("java/.build.ae", "jvm_classpath_deps_including_transitive")
+        // One colon-separated list: the artifact is one line per dependency,
+        // and aeb can hand back several lines after a re-run in one target/.
+        classes = string.replace_all(dep_artifact("java/.build.ae", "jvm_classpath_deps_including_transitive"), "\n", ":")
         rc = os.system("cd \"${root}/java\" && HTMLSANITIZER_LIB=\"${lib}\" java --enable-native-access=ALL-UNNAMED -cp \"${classes}:${test_classes}\" org.htmlsanitizer.ConformanceTest")
         if rc != 0 {
             println("java: conformance suite reported failures")

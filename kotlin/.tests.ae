@@ -70,7 +70,10 @@ aeb(cap) {
             return 0
         }
 
-        classes = dep_artifact("java/.build.ae", "jvm_classpath_deps_including_transitive")
+        // The artifact is a classpath, one line per dependency (aeb can hand
+        // back several lines after a re-run in one target/); kotlinc wants one
+        // colon-separated list.
+        classes = string.replace_all(dep_artifact("java/.build.ae", "jvm_classpath_deps_including_transitive"), "\n", ":")
         out = "${root}/target/tests/kotlin/test-classes"
         stdlib = "${kh}/lib/kotlin-stdlib.jar"
 
