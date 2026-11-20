@@ -2670,7 +2670,9 @@ removal_reason(s: *HtmlSanitizer, i: int) -> int {
     if i < 0 || i >= list_size(s.removals_reason) { return -1 }
     v, err = list.get(s.removals_reason, i)
     if err != "" { return -1 }
-    n, cerr = string.to_int(v)
+    sv, serr = string.from_ptr(v)
+    if serr != "" || sv == null { return -1 }
+    n, cerr = string.to_int(sv)
     if cerr != "" { return -1 }
     return n
 }
