@@ -164,7 +164,7 @@ sanitizer core and every binding whose toolchain is present.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/aether-lang-dev/aeb/main/get.sh \
-  | AE_PIN=0.945.0 AEB_REF=v0.348 sh
+  | AE_PIN=0.946.0 AEB_REF=v0.348 sh
 ```
 
 Prefer downloading to a file first if you want the fetch error surfaced and
